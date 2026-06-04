@@ -98,6 +98,43 @@ const CONFIG = {
         { id: 'gold',      name: 'Gold-Plated',      color: 0xd4af37 },
     ],
 
+    // ── Munitionsarten ────────────────────────────────────────────────────
+    // tracer  = Farbe der Leuchtspur
+    // *Mult   = Multiplikatoren auf Schaden / Mündungsgeschwindigkeit / Wind / Schwerkraft / Streuung
+    // pierce  = Anzahl Ziele, die ein Schuss durchschlagen kann
+    AMMO: {
+        fmj: {
+            id: 'fmj', name: 'Vollmantel', short: 'FMJ', tracer: 0xffd27a,
+            damageMult: 1.00, velocityMult: 1.00, windMult: 1.00, gravityMult: 1.00, swayMult: 1.00,
+            pierce: 1, silent: false, incendiary: false,
+            desc: 'Ausgewogene Standardmunition.',
+        },
+        ap: {
+            id: 'ap', name: 'Panzerbrechend', short: 'AP', tracer: 0x66ccff,
+            damageMult: 0.92, velocityMult: 1.18, windMult: 0.70, gravityMult: 0.80, swayMult: 1.00,
+            pierce: 3, silent: false, incendiary: false,
+            desc: 'Flache Flugbahn, durchschlägt bis zu 3 Ziele. Etwas weniger Schaden.',
+        },
+        hp: {
+            id: 'hp', name: 'Hohlspitz', short: 'HP', tracer: 0xff5544,
+            damageMult: 1.35, velocityMult: 0.92, windMult: 1.25, gravityMult: 1.15, swayMult: 1.00,
+            pierce: 1, silent: false, incendiary: false,
+            desc: 'Massiver Schaden, aber stärkerer Abfall und Windabdrift.',
+        },
+        match: {
+            id: 'match', name: 'Subsonisch Match', short: 'SUB', tracer: 0x88ff99,
+            damageMult: 0.85, velocityMult: 0.72, windMult: 0.55, gravityMult: 1.40, swayMult: 0.55,
+            pierce: 1, silent: true, incendiary: false,
+            desc: 'Leise & extrem ruhig. Langsam mit starkem Abfall – ideal für Stealth.',
+        },
+        incendiary: {
+            id: 'incendiary', name: 'Brandmunition', short: 'INC', tracer: 0xff9020,
+            damageMult: 1.10, velocityMult: 0.95, windMult: 1.10, gravityMult: 1.05, swayMult: 1.00,
+            pierce: 1, silent: false, incendiary: true,
+            desc: 'Entzündet getroffene Ziele. Heller Leuchtspur-Effekt.',
+        },
+    },
+
     // ── Rang-System ───────────────────────────────────────────────────────
     RANKS: [
         { id: 'recruit',  name: 'Rekrut',                    xp:      0, badge: 'I',       tier: 0 },

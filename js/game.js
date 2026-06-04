@@ -676,11 +676,13 @@ class SniperGame {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
         geo.setDrawRange(0, 0);
-        const mat = new THREE.LineBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+        const col = (b.tracerColor !== undefined) ? b.tracerColor : 0xffd27a;
+        const mat = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
         const line = new THREE.Line(geo, mat);
         line.frustumCulled = false;
         this.scene.add(line);
-        const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+        const headCol = new THREE.Color(col).lerp(new THREE.Color(0xffffff), 0.55);
+        const headMat = new THREE.MeshBasicMaterial({ color: headCol, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
         const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), headMat);
         head.frustumCulled = false;
         this.scene.add(head);
@@ -993,6 +995,7 @@ class SniperGame {
             if (e.code === 'Escape' && this.state === 'playing') this.pause();
             if (e.code === 'Escape' && this.state === 'paused') this.resume();
             if (e.code === 'KeyR' && this.state === 'playing' && !this.isReloading) this.startReload();
+            if (e.code === 'KeyB' && this.state === 'playing') this.cycleAmmo();
             if (e.code === 'ShiftLeft' && this.state === 'playing') {
                 this.player.breathHeld = true;
             }
@@ -1104,6 +1107,12 @@ class SniperGame {
             weaponStats: stats,
             silent: stats.silent,
             hitRegistered: false,
+            windMult:    stats.windMult,
+            gravityMult: stats.gravityMult,
+            pierceLeft:  stats.pierce,
+            incendiary:  stats.incendiary,
+            tracerColor: stats.tracerColor,
+            hitTargets:  new Set(),
         };
         this.bullets.push(bullet);
         this._initBulletTracer(bullet);
@@ -1140,6 +1149,63 @@ class SniperGame {
     }
 
     startAiming() {}
+
+    cycleAmmo() {
+        if (this.bulletCamActive || this.isReloading) return;
+        const ids = Object.keys(CONFIG.AMMO);
+        const lo  = weaponSystem.getLoadout(this.weaponId);
+        const idx = ids.indexOf(lo.ammoType);
+        const next = ids[(idx + 1) % ids.length];
+        weaponSystem.setAmmo(this.weaponId, next);
+        uiManager.updateAmmoType(CONFIG.AMMO[next]);
+        uiManager.flashAmmoType();
+    }
+
+    spawnFire(target) {
+        const light = new THREE.PointLight(0xff6618, 3, 7);
+        light.position.copy(target.group.position);
+        light.position.y = 1.2;
+        this.scene.add(light);
+
+        if (!this._fireTex) {
+            this._fireTex = this._makeTexture(32, (ctx, s) => {
+                const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+                g.addColorStop(0.0, 'rgba(255,235,150,1)');
+                g.addColorStop(0.5, 'rgba(255,120,20,0.7)');
+                g.addColorStop(1.0, 'rgba(120,20,0,0)');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, s, s);
+            });
+        }
+
+        const sprites = [];
+        for (let i = 0; i < 6; i++) {
+            const m = new THREE.SpriteMaterial({ map: this._fireTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+            const sp = new THREE.Sprite(m);
+            sp.scale.set(0.55, 0.85, 1);
+            sp.position.set((Math.random() - 0.5) * 0.45, 0.7 + Math.random() * 0.7, (Math.random() - 0.5) * 0.35);
+            target.group.add(sp);
+            sprites.push(sp);
+        }
+
+        let life = 0;
+        const dur = 2.8;
+        const anim = () => {
+            life += 0.033;
+            light.intensity = 2.2 + Math.sin(life * 26) * 1.4;
+            for (const sp of sprites) {
+                sp.position.y += 0.013;
+                sp.material.opacity = Math.max(0, 1 - life / dur);
+            }
+            if (life >= dur) {
+                this.scene.remove(light);
+                for (const sp of sprites) target.group.remove(sp);
+                return;
+            }
+            requestAnimationFrame(anim);
+        };
+        anim();
+    }
 
     randomizeWind() {
         const angle = Math.random() * Math.PI * 2;
@@ -1236,7 +1302,7 @@ class SniperGame {
         const stabMult = 1 - stats.stability / 100;
         const aimMult  = this.player.isAiming ? 0.3 : 1.0;
 
-        const swayAmt = 0.0006 * stabMult * swayMult * aimMult;
+        const swayAmt = 0.0006 * stabMult * swayMult * aimMult * (stats.swayMult || 1);
         const t = performance.now() * 0.001;
 
         this.player.swayVel.x += (Math.sin(t * 1.3) * swayAmt - this.player.sway.x * 0.05) * dt * 60;
@@ -1295,9 +1361,9 @@ class SniperGame {
         for (const b of this.bullets) {
             if (!b.alive) continue;
 
-            b.vel.addScaledVector(gravity, dt);
-            b.vel.x += this.wind.x * 0.003;
-            b.vel.z += this.wind.y * 0.003;
+            b.vel.addScaledVector(gravity, dt * (b.gravityMult || 1));
+            b.vel.x += this.wind.x * 0.003 * (b.windMult || 1);
+            b.vel.z += this.wind.y * 0.003 * (b.windMult || 1);
 
             const prevPos = b.pos.clone();
             b.pos.addScaledVector(b.vel, dt);
@@ -1310,23 +1376,28 @@ class SniperGame {
                 if (b.tracerHead) b.tracerHead.position.copy(b.pos);
             }
 
-            if (!b.hitRegistered) {
+            if (b.alive) {
                 const seg = b.pos.clone().sub(prevPos);
                 const segLen = seg.length();
                 if (segLen > 0) {
-                    const ray = new THREE.Raycaster(prevPos, seg.normalize(), 0, segLen + 0.1);
+                    const ray = new THREE.Raycaster(prevPos, seg.clone().normalize(), 0, segLen + 0.1);
                     const hitObjects = [];
                     for (const t of this.targets) {
-                        if (t.alive) hitObjects.push(...Object.values(t.hitParts));
+                        if (t.alive && !b.hitTargets.has(t.id)) hitObjects.push(...Object.values(t.hitParts));
                     }
                     const hits = ray.intersectObjects(hitObjects);
                     if (hits.length > 0) {
                         const h = hits[0];
                         const target = this.targets.find(t => t.id === h.object.userData.targetId);
                         if (target && target.alive) {
+                            b.hitTargets.add(target.id);
                             this.onHit(b, target, h.object.userData.hitzone, h.point);
-                            b.alive = false;
-                            b.hitRegistered = true;
+                            // Panzerbrechende Munition durchschlägt mehrere Ziele
+                            b.pierceLeft = (b.pierceLeft || 1) - 1;
+                            if (b.pierceLeft <= 0) {
+                                b.alive = false;
+                                b.hitRegistered = true;
+                            }
                         }
                     }
                 }
@@ -1387,8 +1458,11 @@ class SniperGame {
         const dist = Math.round(bullet.pos.distanceTo(this.player.pos));
         const elapsedSec = Math.round((Date.now() - this.missionStartTime) / 100) / 10;
 
-        // Start bullet cam
-        this.startBulletCam(bullet, hitPoint, zone);
+        // Start bullet cam (only once per shot — the first kill of a piercing round)
+        if (!this.bulletCamActive) this.startBulletCam(bullet, hitPoint, zone);
+
+        // Brandmunition entzündet das Ziel
+        if (bullet.incendiary) this.spawnFire(target);
 
         // Kill target
         target.alive = false;
@@ -1403,6 +1477,7 @@ class SniperGame {
         if (dist > 500) pts += 200;
         if (dist > 800) pts += 400;
         if (bullet.silent) pts += 100;
+        if (bullet.incendiary) pts += 50;
         this.score += pts;
 
         // ── XP awards ────────────────────────────────────────────────────
@@ -1641,6 +1716,7 @@ class SniperGame {
         uiManager.updateMissionHUD(this.mission);
         uiManager.updateAmmo(this.ammo, stats.ammo);
         uiManager.updateWeaponName(CONFIG.WEAPONS[this.weaponId].name);
+        uiManager.updateAmmoType(weaponSystem.getAmmo(this.weaponId));
         uiManager.updateWind(this.wind);
     }
 

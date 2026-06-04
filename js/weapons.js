@@ -14,6 +14,7 @@ class WeaponSystem {
                 stock:    w.defaultStock,
                 under:    w.defaultUnder,
                 skinId:   'od_green',
+                ammoType: 'fmj',
                 ammoLeft: w.ammo,
             };
         }
@@ -39,6 +40,17 @@ class WeaponSystem {
         }
     }
 
+    setAmmo(weaponId, ammoId) {
+        if (this.loadouts[weaponId] && CONFIG.AMMO[ammoId]) {
+            this.loadouts[weaponId].ammoType = ammoId;
+        }
+    }
+
+    getAmmo(weaponId) {
+        const lo = this.loadouts[weaponId];
+        return (lo && CONFIG.AMMO[lo.ammoType]) || CONFIG.AMMO.fmj;
+    }
+
     getEffectiveStats(weaponId) {
         const base = CONFIG.WEAPONS[weaponId];
         const loadout = this.loadouts[weaponId];
@@ -48,18 +60,29 @@ class WeaponSystem {
         const barrelData = att.barrels[loadout.barrel]      || att.barrels['none'];
         const stockData  = att.stocks[loadout.stock]        || att.stocks['standard'];
         const underData  = att.underbarrels[loadout.under]  || att.underbarrels['none'];
+        const ammoData   = CONFIG.AMMO[loadout.ammoType]    || CONFIG.AMMO.fmj;
 
         return {
-            damage:    base.damage,
+            damage:    Math.round(base.damage * ammoData.damageMult),
             range:     base.range + barrelData.rangeBonus + scopeData.rangeBonus,
             stability: Math.min(100, base.stability + barrelData.stabilityBonus + stockData.stabilityBonus + underData.stabilityBonus),
             fireRate:  base.fireRate,
             ammo:      base.ammo,
             reloadTime: base.reloadTime,
-            muzzleVelocity: base.muzzleVelocity,
+            muzzleVelocity: base.muzzleVelocity * ammoData.velocityMult,
             zoom:      scopeData.zoom,
-            silent:    barrelData.silent,
+            silent:    barrelData.silent || ammoData.silent,
             type:      base.type,
+            // ── Ammo-abhängige Werte ──
+            ammoId:      ammoData.id,
+            ammoName:    ammoData.name,
+            ammoShort:   ammoData.short,
+            tracerColor: ammoData.tracer,
+            windMult:    ammoData.windMult,
+            gravityMult: ammoData.gravityMult,
+            swayMult:    ammoData.swayMult,
+            pierce:      ammoData.pierce,
+            incendiary:  ammoData.incendiary,
         };
     }
 

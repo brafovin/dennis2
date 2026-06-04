@@ -38,7 +38,7 @@
         <button id="btn-settings"  class="menu-btn secondary">EINSTELLUNGEN</button>
         <div style="margin-top:40px;color:#333;font-size:0.68rem;letter-spacing:0.2em">
             WASD: Bewegen · Rechtsklick: Zielen · Linksklick: Schießen<br>
-            R: Nachladen · SHIFT: Atem anhalten · ESC: Pause
+            R: Nachladen · B: Munition wechseln · SHIFT: Atem anhalten · ESC: Pause
         </div>
     </div>
 </div>
@@ -84,6 +84,11 @@
                     <div class="attachment-row" id="stock-options"></div>
                     <div class="attachment-row" id="underbarrel-options"></div>
                 </div>
+                <div id="ammunition">
+                    <h3>Munition</h3>
+                    <div class="attachment-row" id="ammo-options"></div>
+                    <div id="ammo-desc"></div>
+                </div>
                 <div id="skins">
                     <h3>Skins</h3>
                     <div id="skin-options"></div>
@@ -123,6 +128,7 @@
         <div id="reload-indicator" class="hidden">NACHLADEN...</div>
         <div id="ammo-display">5 / 5</div>
         <div id="weapon-name-hud">REMINGTON M700</div>
+        <div id="ammo-type-hud">FMJ · Vollmantel</div>
     </div>
 
     <!-- Wind -->
@@ -147,7 +153,7 @@
     </div>
 
     <!-- Controls hint while playing -->
-    <div id="controls-hint">ESC: Pause · R: Nachladen · Shift: Atem halten · Rechtsklick: Zielen</div>
+    <div id="controls-hint">ESC: Pause · R: Nachladen · B: Munition · Shift: Atem halten · Rechtsklick: Zielen</div>
 
 </div>
 

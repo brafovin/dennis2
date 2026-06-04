@@ -74,6 +74,7 @@ class UIManager {
         this.populateWeaponList();
         this.populateMissionList();
         this.populateAttachments('r700');
+        this.populateAmmo('r700');
         this.populateSkins('r700');
         this.updateWeaponStats('r700');
 
@@ -243,6 +244,7 @@ class UIManager {
                 document.querySelectorAll('.weapon-item').forEach(el => el.classList.remove('active'));
                 div.classList.add('active');
                 this.populateAttachments(id);
+                this.populateAmmo(id);
                 this.populateSkins(id);
                 this.updateWeaponStats(id);
             });
@@ -252,7 +254,7 @@ class UIManager {
 
     updateWeaponStats(weaponId) {
         const stats = weaponSystem.getEffectiveStats(weaponId);
-        document.getElementById('stat-damage').style.width = stats.damage + '%';
+        document.getElementById('stat-damage').style.width = Math.min(100, stats.damage) + '%';
         document.getElementById('stat-range').style.width = Math.min(100, stats.range / 20) + '%';
         document.getElementById('stat-stability').style.width = stats.stability + '%';
         document.getElementById('stat-firerate').style.width = stats.fireRate + '%';
@@ -308,6 +310,39 @@ class UIManager {
             });
             container.appendChild(btn);
         }
+    }
+
+    populateAmmo(weaponId) {
+        const container = document.getElementById('ammo-options');
+        if (!container) return;
+        const loadout = weaponSystem.getLoadout(weaponId);
+        container.innerHTML = `<div style="color:#666;font-size:0.7rem;letter-spacing:0.2em;width:100%;margin-bottom:4px;">MUNITION</div>`;
+
+        for (const key in CONFIG.AMMO) {
+            const a = CONFIG.AMMO[key];
+            const hex = '#' + a.tracer.toString(16).padStart(6, '0');
+            const btn = document.createElement('button');
+            btn.className = 'attachment-btn ammo-btn' + (loadout.ammoType === key ? ' active' : '');
+            btn.innerHTML = `<span class="ammo-dot" style="background:${hex};color:${hex}"></span>${a.short} · ${a.name}`;
+            btn.title = a.desc;
+            btn.addEventListener('click', () => {
+                weaponSystem.setAmmo(weaponId, key);
+                container.querySelectorAll('.ammo-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.showAmmoDesc(a);
+                this.updateWeaponStats(weaponId);
+                if (game.state === 'playing' || game.state === 'paused') {
+                    this.updateAmmoType(a);
+                }
+            });
+            container.appendChild(btn);
+        }
+        this.showAmmoDesc(CONFIG.AMMO[loadout.ammoType] || CONFIG.AMMO.fmj);
+    }
+
+    showAmmoDesc(a) {
+        const el = document.getElementById('ammo-desc');
+        if (el && a) el.textContent = a.desc;
     }
 
     showStatsScreen() {
@@ -505,6 +540,24 @@ class UIManager {
 
     updateWeaponName(name) {
         document.getElementById('weapon-name-hud').textContent = name;
+    }
+
+    updateAmmoType(ammo) {
+        const el = document.getElementById('ammo-type-hud');
+        if (!el || !ammo) return;
+        el.textContent = ammo.short + ' · ' + ammo.name;
+        el.style.color = '#' + ammo.tracer.toString(16).padStart(6, '0');
+    }
+
+    flashAmmoType() {
+        const el = document.getElementById('ammo-type-hud');
+        if (!el) return;
+        el.style.transition = 'none';
+        el.style.transform = 'scale(1.45)';
+        requestAnimationFrame(() => {
+            el.style.transition = 'transform 0.3s ease';
+            el.style.transform = 'scale(1)';
+        });
     }
 
     updateWind(wind) {
