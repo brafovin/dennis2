@@ -16,6 +16,14 @@ body {
     display: block;
 }
 
+#vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 50%, transparent 38%, rgba(0,0,0,0.42) 72%, rgba(0,0,0,0.72) 100%);
+    z-index: 3;
+}
+
 /* ── Menus ─────────────────────────────────── */
 .menu {
     position: fixed;

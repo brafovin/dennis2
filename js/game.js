@@ -114,7 +114,7 @@ class SniperGame {
         this.renderer.outputEncoding = THREE.sRGBEncoding;
 
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.FogExp2(0xb8d4e8, 0.0018);
+        this.scene.fog = new THREE.FogExp2(0xbcd8e8, 0.0016);
 
         this.mainCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 2000);
         this.mainCamera.position.copy(this.player.pos);
@@ -163,14 +163,16 @@ class SniperGame {
         skyGeo.scale(-1, 1, 1);
         const skyMat = new THREE.ShaderMaterial({
             uniforms: {
-                topColor:    { value: new THREE.Color(0x2255aa) },
-                midColor:    { value: new THREE.Color(0x7ab2d4) },
-                horizColor:  { value: new THREE.Color(0xc8dce8) },
+                topColor:   { value: new THREE.Color(0x1a4499) },
+                midColor:   { value: new THREE.Color(0x5aa0cc) },
+                horizColor: { value: new THREE.Color(0xbcd8e8) },
+                sunDir:     { value: new THREE.Vector3(180, 350, 120).normalize() },
+                sunColor:   { value: new THREE.Color(0xfff8e0) },
             },
             vertexShader: `
-                varying float vY;
+                varying vec3 vNorm;
                 void main() {
-                    vY = normalize(position).y;
+                    vNorm = normalize(position);
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
@@ -178,12 +180,20 @@ class SniperGame {
                 uniform vec3 topColor;
                 uniform vec3 midColor;
                 uniform vec3 horizColor;
-                varying float vY;
+                uniform vec3 sunDir;
+                uniform vec3 sunColor;
+                varying vec3 vNorm;
                 void main() {
-                    float t = max(0.0, vY);
-                    float h = max(0.0, -vY * 3.0 + 0.3);
+                    float y = vNorm.y;
+                    float t = max(0.0, y);
+                    float h = clamp(-y * 3.0 + 0.3, 0.0, 1.0);
                     vec3 col = mix(mix(horizColor, midColor, min(1.0, t * 2.5)), topColor, min(1.0, t * 1.3));
-                    col = mix(col, horizColor, clamp(h, 0.0, 1.0));
+                    col = mix(col, horizColor, h);
+                    float sd = dot(vNorm, sunDir);
+                    float disc   = smoothstep(0.9992, 0.9998, sd);
+                    float corona = smoothstep(0.985,  0.9992, sd) * 0.45;
+                    float glow   = smoothstep(0.90,   0.985,  sd) * 0.12;
+                    col += sunColor * (disc + corona + glow);
                     gl_FragColor = vec4(col, 1.0);
                 }
             `,
@@ -208,18 +218,12 @@ class SniperGame {
         }
 
         // ── Ground ─────────────────────────────────────────────────────────
-        const groundGeo = new THREE.PlaneGeometry(CONFIG.LEVEL.SIZE, CONFIG.LEVEL.SIZE, 60, 60);
-        // Subtle vertex color variation
-        const posAttr = groundGeo.attributes.position;
-        const colors = [];
-        for (let i = 0; i < posAttr.count; i++) {
-            const n = (Math.sin(posAttr.getX(i) * 0.04) * Math.cos(posAttr.getZ(i) * 0.06) + 1) * 0.5;
-            colors.push(0.30 + n * 0.06, 0.44 + n * 0.08, 0.20 + n * 0.04);
-        }
-        groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        const groundGeo = new THREE.PlaneGeometry(CONFIG.LEVEL.SIZE, CONFIG.LEVEL.SIZE, 4, 4);
+        const grassTex = this._makeGrassTex();
+        grassTex.repeat.set(80, 80);
         const groundMat = new THREE.MeshStandardMaterial({
-            vertexColors: true,
-            roughness: 0.90, metalness: 0.0,
+            map: grassTex,
+            roughness: 0.92, metalness: 0.0,
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
@@ -237,7 +241,9 @@ class SniperGame {
         }
 
         // Road (asphalt look)
-        const roadMat = new THREE.MeshStandardMaterial({ color: 0x5a5a52, roughness: 0.92, metalness: 0.0 });
+        const roadTex = this._makeRoadTex();
+        roadTex.repeat.set(1, 50);
+        const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, color: 0x888880, roughness: 0.92, metalness: 0.0 });
         const roadGeo = new THREE.PlaneGeometry(6, 1400);
         const road = new THREE.Mesh(roadGeo, roadMat);
         road.rotation.x = -Math.PI / 2;
@@ -325,6 +331,20 @@ class SniperGame {
             this.scene.add(hill);
         }
 
+        // ── Street lamps along road ────────────────────────────────────────
+        for (let lz = -100; lz >= -880; lz -= 80) {
+            this.addStreetLamp(-4.5, lz);
+            if (lz - 40 >= -900) this.addStreetLamp(4.5, lz - 40);
+        }
+
+        // ── Parked cars near buildings ─────────────────────────────────────
+        this.addCar( 30,  -95,  0.05, 0x4a5a7a);
+        this.addCar(-38, -115, Math.PI - 0.1, 0x7a3a30);
+        this.addCar( 48, -185,  0.15, 0x3a5a3a);
+        this.addCar(-52, -215, -0.08, 0x7a7a50);
+        this.addCar( 62, -330, -0.05, 0x5a3a2a);
+        this.addCar(-65, -370, Math.PI + 0.1, 0x2a4a6a);
+
         // ── Muzzle flash light ─────────────────────────────────────────────
         const flashLight = new THREE.PointLight(0xffcc44, 5, 3);
         flashLight.visible = false;
@@ -335,7 +355,8 @@ class SniperGame {
     addBuilding(def) {
         const { x, z, w, h, d, c, rc } = def;
 
-        const mat    = new THREE.MeshStandardMaterial({ color: c,  roughness: 0.82, metalness: 0.05 });
+        if (!this._texConc) this._texConc = this._makeConcTex();
+        const mat    = new THREE.MeshStandardMaterial({ color: c, map: this._texConc, roughness: 0.82, metalness: 0.05 });
         const roofMat= new THREE.MeshStandardMaterial({ color: rc, roughness: 0.80, metalness: 0.08 });
         const darkMat= new THREE.MeshStandardMaterial({ color: 0x181818, roughness: 0.5, metalness: 0.3 });
         const frameMat=new THREE.MeshStandardMaterial({ color: 0xccbbaa, roughness: 0.75 });
@@ -483,6 +504,168 @@ class SniperGame {
             s.position.set(x - width / 2 + 1 + i * 2.8, height / 2, z);
             this.scene.add(s);
         }
+    }
+
+    _makeTexture(size, fn) {
+        const cv = document.createElement('canvas');
+        cv.width = cv.height = size;
+        const ctx = cv.getContext('2d');
+        fn(ctx, size);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        return tex;
+    }
+
+    _makeGrassTex() {
+        return this._makeTexture(512, (ctx, s) => {
+            ctx.fillStyle = '#4a6a38';
+            ctx.fillRect(0, 0, s, s);
+            for (let i = 0; i < 700; i++) {
+                const x = Math.random() * s, y = Math.random() * s;
+                const r = 5 + Math.random() * 20;
+                const hue = 88 + Math.random() * 30;
+                const lit = 26 + Math.random() * 16;
+                ctx.fillStyle = `hsl(${hue},44%,${lit}%)`;
+                ctx.beginPath();
+                ctx.ellipse(x, y, r, r * 0.55, Math.random() * Math.PI, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 0.55;
+            for (let i = 0; i < 2500; i++) {
+                const x = Math.random() * s, y = Math.random() * s;
+                const a = (Math.random() - 0.5) * 0.5;
+                const l = 4 + Math.random() * 9;
+                ctx.strokeStyle = `hsl(${93 + Math.random() * 22},48%,${28 + Math.random() * 16}%)`;
+                ctx.lineWidth = 0.6;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + Math.sin(a) * l, y - Math.cos(a) * l);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        });
+    }
+
+    _makeConcTex() {
+        return this._makeTexture(512, (ctx, s) => {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, s, s);
+            for (let i = 0; i < 8000; i++) {
+                const v = 30 + Math.floor(Math.random() * 80);
+                ctx.fillStyle = `rgba(${v},${v},${v},${0.04 + Math.random() * 0.06})`;
+                ctx.fillRect(Math.random() * s, Math.random() * s, 1 + Math.random() * 3, 1 + Math.random() * 3);
+            }
+            ctx.globalAlpha = 0.1;
+            for (let i = 1; i <= 10; i++) {
+                const y = (s / 10) * i;
+                ctx.strokeStyle = '#666';
+                ctx.lineWidth = 0.6;
+                ctx.beginPath();
+                ctx.moveTo(0, y + (Math.random() - 0.5) * 2);
+                ctx.lineTo(s, y + (Math.random() - 0.5) * 2);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 0.07;
+            for (let c = 0; c < 5; c++) {
+                let px = Math.random() * s, py = Math.random() * s;
+                ctx.strokeStyle = '#444';
+                ctx.lineWidth = 0.7;
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                for (let st = 0; st < 10; st++) {
+                    px += (Math.random() - 0.5) * 24;
+                    py += Math.random() * 18;
+                    ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        });
+    }
+
+    _makeRoadTex() {
+        return this._makeTexture(256, (ctx, s) => {
+            ctx.fillStyle = '#1e1e18';
+            ctx.fillRect(0, 0, s, s);
+            for (let i = 0; i < 5000; i++) {
+                const v = 32 + Math.floor(Math.random() * 52);
+                ctx.fillStyle = `rgba(${v},${v},${Math.max(0, v - 5)},0.55)`;
+                ctx.fillRect(Math.random() * s, Math.random() * s, 0.5 + Math.random() * 2, 0.5 + Math.random() * 2);
+            }
+            ctx.globalAlpha = 0.28;
+            for (let t = 0; t < 2; t++) {
+                ctx.fillStyle = '#080806';
+                ctx.fillRect(s * 0.26 + t * s * 0.48 - 8, 0, 16, s);
+            }
+            ctx.globalAlpha = 1;
+        });
+    }
+
+    addStreetLamp(x, z) {
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0x888880, roughness: 0.65, metalness: 0.55 });
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.3, 8), poleMat);
+        base.position.set(x, 0.15, z);
+        this.scene.add(base);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 7.2, 8), poleMat);
+        pole.position.set(x, 3.9, z);
+        pole.castShadow = true;
+        this.scene.add(pole);
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.8, 6), poleMat);
+        arm.position.set(x + 0.9, 7.5, z);
+        arm.rotation.z = Math.PI / 2;
+        this.scene.add(arm);
+        const housingMat = new THREE.MeshStandardMaterial({ color: 0x505050, roughness: 0.5, metalness: 0.7 });
+        const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 0.28, 8), housingMat);
+        housing.position.set(x + 1.8, 7.3, z);
+        this.scene.add(housing);
+        const lensMat = new THREE.MeshBasicMaterial({ color: 0xfff5aa });
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.06, 8), lensMat);
+        lens.position.set(x + 1.8, 7.1, z);
+        this.scene.add(lens);
+    }
+
+    addCar(x, z, ry, colorHex) {
+        const group = new THREE.Group();
+        group.position.set(x, 0, z);
+        group.rotation.y = ry;
+        const bodyMat  = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.28, metalness: 0.65 });
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x334455, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.6 });
+        const tireMat  = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
+        const rimMat   = new THREE.MeshStandardMaterial({ color: 0xbbbbbb, roughness: 0.3, metalness: 0.8 });
+        const bumpMat  = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.75 });
+        const bodyLow  = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.7, 4.2), bodyMat);
+        bodyLow.position.set(0, 0.65, 0);
+        bodyLow.castShadow = true;
+        group.add(bodyLow);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.65, 2.2), bodyMat);
+        cabin.position.set(0, 1.33, -0.1);
+        cabin.castShadow = true;
+        group.add(cabin);
+        const frontWin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.52, 0.06), glassMat);
+        frontWin.position.set(0, 1.33, -1.18);
+        group.add(frontWin);
+        const rearWin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.52, 0.06), glassMat);
+        rearWin.position.set(0, 1.33, 0.99);
+        group.add(rearWin);
+        const wheelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 12);
+        const rimGeo   = new THREE.CylinderGeometry(0.18, 0.18, 0.24, 8);
+        for (const [wx, wz] of [[-0.9, -1.3], [0.9, -1.3], [-0.9, 1.3], [0.9, 1.3]]) {
+            const wheel = new THREE.Mesh(wheelGeo, tireMat);
+            wheel.position.set(wx, 0.32, wz);
+            wheel.rotation.z = Math.PI / 2;
+            group.add(wheel);
+            const rim = new THREE.Mesh(rimGeo, rimMat);
+            rim.position.set(wx, 0.32, wz);
+            rim.rotation.z = Math.PI / 2;
+            group.add(rim);
+        }
+        const frontBump = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.24, 0.1), bumpMat);
+        frontBump.position.set(0, 0.42, -2.15);
+        group.add(frontBump);
+        const rearBump = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.24, 0.1), bumpMat);
+        rearBump.position.set(0, 0.42, 2.15);
+        group.add(rearBump);
+        this.scene.add(group);
     }
 
     spawnTargets(missionDef) {
