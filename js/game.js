@@ -59,6 +59,8 @@ class SniperGame {
         this.environmentMeshes = [];
         this.muzzleFlash = null;
         this.muzzleFlashTimer = 0;
+        this.fadingTracers = [];
+        this.dustParticles = null;
 
         this.score = 0;
         this.totalScore = 0;
@@ -110,7 +112,7 @@ class SniperGame {
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.05;
+        this.renderer.toneMappingExposure = 1.12;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
 
         this.scene = new THREE.Scene();
@@ -122,7 +124,7 @@ class SniperGame {
         this.bulletCamObj = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 2000);
 
         // ── Lighting ───────────────────────────────────────────────────────
-        const ambient = new THREE.AmbientLight(0xd0e8ff, 0.55);
+        const ambient = new THREE.AmbientLight(0xd0e8ff, 0.40);
         this.scene.add(ambient);
 
         // Primary sun (warm afternoon angle)
@@ -138,10 +140,11 @@ class SniperGame {
         sun.shadow.camera.top    =  500;
         sun.shadow.camera.bottom = -500;
         sun.shadow.bias = -0.0003;
+        sun.shadow.radius = 2.5;
         this.scene.add(sun);
 
         // Sky / ground hemisphere
-        const hemi = new THREE.HemisphereLight(0x88aadd, 0x5a7a3a, 0.55);
+        const hemi = new THREE.HemisphereLight(0x88aadd, 0x5a7a3a, 0.42);
         this.scene.add(hemi);
 
         // Subtle fill light from opposite side
@@ -150,6 +153,7 @@ class SniperGame {
         this.scene.add(fill);
 
         this.buildEnvironment();
+        this._buildEnvMap();
         this.bindInput();
 
         window.addEventListener('resize', () => this.onResize());
@@ -200,6 +204,7 @@ class SniperGame {
             side: THREE.BackSide,
             depthWrite: false,
         });
+        this._skyMat = skyMat;
         this.scene.add(new THREE.Mesh(skyGeo, skyMat));
 
         // ── Clouds (simple flat quads) ─────────────────────────────────────
@@ -223,6 +228,7 @@ class SniperGame {
         grassTex.repeat.set(80, 80);
         const groundMat = new THREE.MeshStandardMaterial({
             map: grassTex,
+            bumpMap: grassTex, bumpScale: 0.08,
             roughness: 0.92, metalness: 0.0,
         });
         const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -243,7 +249,7 @@ class SniperGame {
         // Road (asphalt look)
         const roadTex = this._makeRoadTex();
         roadTex.repeat.set(1, 50);
-        const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, color: 0x888880, roughness: 0.92, metalness: 0.0 });
+        const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, bumpMap: roadTex, bumpScale: 0.03, color: 0x888880, roughness: 0.92, metalness: 0.0 });
         const roadGeo = new THREE.PlaneGeometry(6, 1400);
         const road = new THREE.Mesh(roadGeo, roadMat);
         road.rotation.x = -Math.PI / 2;
@@ -345,6 +351,9 @@ class SniperGame {
         this.addCar( 62, -330, -0.05, 0x5a3a2a);
         this.addCar(-65, -370, Math.PI + 0.1, 0x2a4a6a);
 
+        this.addSunFlare();
+        this.addDust();
+
         // ── Muzzle flash light ─────────────────────────────────────────────
         const flashLight = new THREE.PointLight(0xffcc44, 5, 3);
         flashLight.visible = false;
@@ -356,9 +365,9 @@ class SniperGame {
         const { x, z, w, h, d, c, rc } = def;
 
         if (!this._texConc) this._texConc = this._makeConcTex();
-        const mat    = new THREE.MeshStandardMaterial({ color: c, map: this._texConc, roughness: 0.82, metalness: 0.05 });
+        const mat    = new THREE.MeshStandardMaterial({ color: c, map: this._texConc, bumpMap: this._texConc, bumpScale: 0.04, roughness: 0.82, metalness: 0.05 });
         const roofMat= new THREE.MeshStandardMaterial({ color: rc, roughness: 0.80, metalness: 0.08 });
-        const darkMat= new THREE.MeshStandardMaterial({ color: 0x181818, roughness: 0.5, metalness: 0.3 });
+        const darkMat= new THREE.MeshStandardMaterial({ color: 0x0e1218, roughness: 0.12, metalness: 0.65 });
         const frameMat=new THREE.MeshStandardMaterial({ color: 0xccbbaa, roughness: 0.75 });
 
         // Main body
@@ -402,9 +411,13 @@ class SniperGame {
                 const wy = r * 3.8 - 0.5;
                 const wz = z + d / 2;
 
-                // Window glass
+                // Window glass (some windows are lit)
                 const glassGeo = new THREE.BoxGeometry(1.3, 1.6, 0.08);
-                const glass = new THREE.Mesh(glassGeo, darkMat);
+                const lit = Math.random() < 0.16;
+                const gMat = lit
+                    ? new THREE.MeshStandardMaterial({ color: 0x2a2410, emissive: 0xffcb66, emissiveIntensity: 0.85, roughness: 0.4, metalness: 0.1 })
+                    : darkMat;
+                const glass = new THREE.Mesh(glassGeo, gMat);
                 glass.position.set(wx, wy, wz + 0.01);
                 this.scene.add(glass);
 
@@ -599,6 +612,137 @@ class SniperGame {
             }
             ctx.globalAlpha = 1;
         });
+    }
+
+    addSunFlare() {
+        const tex = this._makeTexture(128, (ctx, s) => {
+            const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+            g.addColorStop(0.0, 'rgba(255,250,235,0.95)');
+            g.addColorStop(0.2, 'rgba(255,242,200,0.55)');
+            g.addColorStop(0.5, 'rgba(255,224,160,0.16)');
+            g.addColorStop(1.0, 'rgba(255,224,160,0.0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, s, s);
+        });
+        const mat = new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, depthTest: false });
+        const sprite = new THREE.Sprite(mat);
+        const dir = new THREE.Vector3(180, 350, 120).normalize();
+        sprite.position.copy(dir.multiplyScalar(1250));
+        sprite.scale.set(340, 340, 1);
+        this.scene.add(sprite);
+    }
+
+    addDust() {
+        const N = 460;
+        const positions = new Float32Array(N * 3);
+        for (let i = 0; i < N; i++) {
+            positions[i*3]   = (Math.random() - 0.5) * 190;
+            positions[i*3+1] = Math.random() * 28 + 0.5;
+            positions[i*3+2] = 80 - Math.random() * 280;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const tex = this._makeTexture(32, (ctx, s) => {
+            const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+            g.addColorStop(0, 'rgba(255,255,245,1)');
+            g.addColorStop(1, 'rgba(255,255,245,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, s, s);
+        });
+        const mat = new THREE.PointsMaterial({ size: 0.45, map: tex, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true });
+        const pts = new THREE.Points(geo, mat);
+        pts.frustumCulled = false;
+        this.scene.add(pts);
+        this.dustParticles = pts;
+    }
+
+    _buildEnvMap() {
+        try {
+            const envScene = new THREE.Scene();
+            const g = new THREE.SphereGeometry(10, 24, 12);
+            g.scale(-1, 1, 1);
+            envScene.add(new THREE.Mesh(g, this._skyMat));
+            const pmrem = new THREE.PMREMGenerator(this.renderer);
+            const rt = pmrem.fromScene(envScene, 0.04);
+            this.scene.environment = rt.texture;
+            pmrem.dispose();
+            g.dispose();
+        } catch (_) {}
+    }
+
+    _initBulletTracer(b) {
+        const maxPts = 64;
+        const arr = new Float32Array(maxPts * 3);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+        geo.setDrawRange(0, 0);
+        const mat = new THREE.LineBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+        const line = new THREE.Line(geo, mat);
+        line.frustumCulled = false;
+        this.scene.add(line);
+        const headMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false });
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), headMat);
+        head.frustumCulled = false;
+        this.scene.add(head);
+        b.trail = [];
+        b.trailMax = maxPts;
+        b.trailLine = line;
+        b.tracerHead = head;
+    }
+
+    _writeTrail(b) {
+        const arr = b.trailLine.geometry.attributes.position.array;
+        for (let i = 0; i < b.trail.length; i++) {
+            arr[i*3]   = b.trail[i].x;
+            arr[i*3+1] = b.trail[i].y;
+            arr[i*3+2] = b.trail[i].z;
+        }
+        b.trailLine.geometry.attributes.position.needsUpdate = true;
+        b.trailLine.geometry.setDrawRange(0, b.trail.length);
+    }
+
+    _retireTracer(b) {
+        if (!b.trailLine) return;
+        b.trail.push(b.pos.clone());
+        if (b.trail.length > b.trailMax) b.trail.shift();
+        this._writeTrail(b);
+        this.fadingTracers.push({ line: b.trailLine, head: b.tracerHead, ttl: 2.5, max: 2.5 });
+        b.trailLine = null;
+        b.tracerHead = null;
+        b.trail = null;
+    }
+
+    _updateFadingTracers(dt) {
+        for (let i = this.fadingTracers.length - 1; i >= 0; i--) {
+            const f = this.fadingTracers[i];
+            f.ttl -= dt;
+            const a = Math.max(0, f.ttl / f.max);
+            f.line.material.opacity = a * 0.9;
+            if (f.head) f.head.material.opacity = a;
+            if (f.ttl <= 0) {
+                this.scene.remove(f.line);
+                f.line.geometry.dispose();
+                f.line.material.dispose();
+                if (f.head) {
+                    this.scene.remove(f.head);
+                    f.head.geometry.dispose();
+                    f.head.material.dispose();
+                }
+                this.fadingTracers.splice(i, 1);
+            }
+        }
+    }
+
+    _updateDust(dt) {
+        if (!this.dustParticles) return;
+        const arr = this.dustParticles.geometry.attributes.position.array;
+        const tt = performance.now() * 0.0003;
+        for (let i = 0; i < arr.length; i += 3) {
+            arr[i+1] += dt * 0.35;
+            arr[i]   += Math.sin(tt + i) * dt * 0.25;
+            if (arr[i+1] > 30) arr[i+1] = 0.5;
+        }
+        this.dustParticles.geometry.attributes.position.needsUpdate = true;
     }
 
     addStreetLamp(x, z) {
@@ -962,6 +1106,7 @@ class SniperGame {
             hitRegistered: false,
         };
         this.bullets.push(bullet);
+        this._initBulletTracer(bullet);
 
         // Muzzle flash
         this.muzzleFlash.visible = true;
@@ -1029,6 +1174,8 @@ class SniperGame {
         this.updateTimers(dt);
         this.updateWeaponSway(dt);
         this.updateMuzzleFlash(dt);
+        this._updateFadingTracers(dt);
+        this._updateDust(dt);
         if (this.bulletCamActive) {
             this.updateBulletCam(dt);
         }
@@ -1156,6 +1303,13 @@ class SniperGame {
             b.pos.addScaledVector(b.vel, dt);
             b.traveled += b.vel.length() * dt;
 
+            if (b.trail) {
+                b.trail.push(b.pos.clone());
+                if (b.trail.length > b.trailMax) b.trail.shift();
+                this._writeTrail(b);
+                if (b.tracerHead) b.tracerHead.position.copy(b.pos);
+            }
+
             if (!b.hitRegistered) {
                 const seg = b.pos.clone().sub(prevPos);
                 const segLen = seg.length();
@@ -1182,7 +1336,12 @@ class SniperGame {
             if (b.traveled > b.weaponStats.range) b.alive = false;
         }
 
-        this.bullets = this.bullets.filter(b => b.alive);
+        const stillAlive = [];
+        for (const b of this.bullets) {
+            if (b.alive) stillAlive.push(b);
+            else this._retireTracer(b);
+        }
+        this.bullets = stillAlive;
     }
 
     updateTargets(dt) {
