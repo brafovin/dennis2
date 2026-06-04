@@ -64,6 +64,43 @@ class SniperGame {
         this.totalScore = 0;
         this.killLog = [];
         this.missionStartTime = 0;
+        this.sessionXP = 0;
+        this.sessionXPBreak = { killXP:0, headshotXP:0, distanceXP:0, stealthXP:0, missionXP:0 };
+    }
+
+    // ── XP / Rang-System ───────────────────────────────────────────────────
+    awardXP(amount, category) {
+        try {
+            const data = this._loadRankData();
+            const prevTotal = data.totalXP || 0;
+
+            data.totalXP       = prevTotal + amount;
+            data[category]     = (data[category] || 0) + amount;
+
+            this.sessionXP                        += amount;
+            this.sessionXPBreak[category]          = (this.sessionXPBreak[category] || 0) + amount;
+
+            const oldIdx = this._rankIndex(prevTotal);
+            const newIdx = this._rankIndex(data.totalXP);
+            if (newIdx > oldIdx) {
+                data.rankId = CONFIG.RANKS[newIdx].id;
+                setTimeout(() => uiManager.showRankUp(CONFIG.RANKS[newIdx]), 600);
+            }
+
+            localStorage.setItem('sniperRank', JSON.stringify(data));
+        } catch(_) {}
+    }
+
+    _loadRankData() {
+        try { return JSON.parse(localStorage.getItem('sniperRank') || '{}'); } catch(_) { return {}; }
+    }
+
+    _rankIndex(xp) {
+        let idx = 0;
+        for (let i = 0; i < CONFIG.RANKS.length; i++) {
+            if (xp >= CONFIG.RANKS[i].xp) idx = i; else break;
+        }
+        return idx;
     }
 
     init() {
@@ -1026,6 +1063,16 @@ class SniperGame {
         if (bullet.silent) pts += 100;
         this.score += pts;
 
+        // ── XP awards ────────────────────────────────────────────────────
+        this.awardXP(CONFIG.XP.KILL, 'killXP');
+        if (isHeadshot) this.awardXP(CONFIG.XP.HEADSHOT, 'headshotXP');
+        if (bullet.silent) this.awardXP(CONFIG.XP.SILENT, 'stealthXP');
+        if      (dist >= 1000) this.awardXP(CONFIG.XP.DIST_1000, 'distanceXP');
+        else if (dist >=  900) this.awardXP(CONFIG.XP.DIST_900,  'distanceXP');
+        else if (dist >=  600) this.awardXP(CONFIG.XP.DIST_600,  'distanceXP');
+        else if (dist >=  300) this.awardXP(CONFIG.XP.DIST_300,  'distanceXP');
+        else if (dist >=  100) this.awardXP(CONFIG.XP.DIST_100,  'distanceXP');
+
         // Kill log entry
         this.killLog.push({
             n:       this.killLog.length + 1,
@@ -1175,18 +1222,17 @@ class SniperGame {
         }
         this.totalScore += this.score;
 
-        // Persist best mission time
+        // Persist best mission time + award mission XP
         const elapsed = Math.round((Date.now() - this.missionStartTime) / 100) / 10;
         try {
             const best = JSON.parse(localStorage.getItem('sniperBest') || '{}');
-            if (!best[this.mission.id] || elapsed < best[this.mission.id].time) {
-                best[this.mission.id] = {
-                    time:  elapsed,
-                    kills: this.killCount,
-                    score: this.score,
-                };
+            const isFirstClear = !best[this.mission.id];
+            if (isFirstClear || elapsed < best[this.mission.id].time) {
+                best[this.mission.id] = { time: elapsed, kills: this.killCount, score: this.score };
                 localStorage.setItem('sniperBest', JSON.stringify(best));
             }
+            this.awardXP(CONFIG.XP.MISSION_DONE, 'missionXP');
+            if (isFirstClear) this.awardXP(CONFIG.XP.FIRST_CLEAR, 'missionXP');
         } catch(_) {}
 
         setTimeout(() => {
@@ -1218,6 +1264,8 @@ class SniperGame {
         this.timedKillTimer = 0;
         this.killLog = [];
         this.missionStartTime = Date.now();
+        this.sessionXP = 0;
+        this.sessionXPBreak = { killXP:0, headshotXP:0, distanceXP:0, stealthXP:0, missionXP:0 };
 
         // Reset player position
         this.player.pos.set(0, 6, 80);

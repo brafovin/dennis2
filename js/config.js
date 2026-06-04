@@ -97,4 +97,36 @@ const CONFIG = {
         { id: 'tiger',     name: 'Tiger-Camo',       color: 0x8b6914 },
         { id: 'gold',      name: 'Gold-Plated',      color: 0xd4af37 },
     ],
+
+    // ── Rang-System ───────────────────────────────────────────────────────
+    RANKS: [
+        { id: 'recruit',  name: 'Rekrut',                    xp:      0, badge: 'I',       tier: 0 },
+        { id: 'private',  name: 'Schütze',                   xp:    400, badge: 'II',      tier: 0 },
+        { id: 'corporal', name: 'Gefreiter',                 xp:   1000, badge: 'III',     tier: 0 },
+        { id: 'sergeant', name: 'Unteroffizier',             xp:   2200, badge: '◆',       tier: 1 },
+        { id: 'ssgt',     name: 'Feldwebel',                 xp:   4500, badge: '◆◆',      tier: 1 },
+        { id: 'msgt',     name: 'Oberfeldwebel',             xp:   8000, badge: '◆◆◆',     tier: 1 },
+        { id: 'lt',       name: 'Leutnant',                  xp:  13000, badge: '★',       tier: 2 },
+        { id: 'lt2',      name: 'Oberleutnant',              xp:  20000, badge: '★★',      tier: 2 },
+        { id: 'captain',  name: 'Hauptmann',                 xp:  32000, badge: '★★★',     tier: 2 },
+        { id: 'major',    name: 'Major',                     xp:  50000, badge: '✦',       tier: 3 },
+        { id: 'ltcol',    name: 'Oberstleutnant',            xp:  75000, badge: '✦✦',      tier: 3 },
+        { id: 'colonel',  name: 'Oberst',                    xp: 110000, badge: '✦✦✦',     tier: 3 },
+        { id: 'general',  name: 'General',                   xp: 160000, badge: '⬡',       tier: 4 },
+        { id: 'legend',   name: 'Scharfschützen-Legende',    xp: 250000, badge: '⬡⬡',      tier: 4 },
+    ],
+
+    // XP pro Aktion
+    XP: {
+        KILL:          10,
+        HEADSHOT:      28,
+        DIST_100:       5,
+        DIST_300:      15,
+        DIST_600:      40,
+        DIST_900:      90,
+        DIST_1000:    150,
+        SILENT:        18,
+        MISSION_DONE: 220,
+        FIRST_CLEAR:  120,   // erste Missionsabschluss-Bonus
+    },
 };

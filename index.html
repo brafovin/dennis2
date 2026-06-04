@@ -22,6 +22,16 @@
     <div class="menu-content">
         <h1 class="game-title">SNIPER ELITE 3D</h1>
         <div class="game-subtitle">Taktisch · Präzise · Lautlos</div>
+
+        <!-- Rank widget -->
+        <div id="rank-widget">
+            <div id="rank-badge-display"></div>
+            <div id="rank-name-display"></div>
+            <div id="rank-xp-bar-wrap">
+                <div id="rank-xp-bar"><div id="rank-xp-fill"></div></div>
+                <div id="rank-xp-label"></div>
+            </div>
+        </div>
         <button id="btn-missions"  class="menu-btn">MISSIONEN</button>
         <button id="btn-weapons"   class="menu-btn">WAFFENKAMMER</button>
         <button id="btn-stats"     class="menu-btn">STATISTIKEN</button>
@@ -205,6 +215,16 @@
         <button id="btn-retry"              class="menu-btn">WIEDERHOLEN</button>
         <button id="btn-next-mission"       class="menu-btn">MISSIONSAUSWAHL</button>
         <button id="btn-main-menu-complete" class="menu-btn secondary">HAUPTMENÜ</button>
+    </div>
+</div>
+
+<!-- ── Rank-Up Overlay ─────────────────── -->
+<div id="rankup-overlay" class="hidden">
+    <div id="rankup-content">
+        <div id="rankup-label">BEFÖRDERUNG!</div>
+        <div id="rankup-badge"></div>
+        <div id="rankup-name"></div>
+        <div id="rankup-sub"></div>
     </div>
 </div>
 

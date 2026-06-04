@@ -533,6 +533,124 @@ body {
     text-align: center;
 }
 
+/* ── Rank Widget (Hauptmenü) ───────────────────────────────────── */
+#rank-widget {
+    margin: 18px auto 28px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+#rank-badge-display {
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: 0.1em;
+}
+
+#rank-name-display {
+    font-size: 0.8rem;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+}
+
+#rank-xp-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+#rank-xp-bar {
+    width: 180px;
+    height: 4px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+#rank-xp-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.6s ease-out;
+}
+
+#rank-xp-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    white-space: nowrap;
+}
+
+/* Tier color classes */
+.rank-tier-0 { color: #999; }
+.rank-tier-0 #rank-xp-fill, .rank-tier-0 .xp-fill-bar  { background: #888; }
+
+.rank-tier-1 { color: #c8b060; }
+.rank-tier-1 #rank-xp-fill, .rank-tier-1 .xp-fill-bar  { background: linear-gradient(90deg,#a08040,#d4b060); }
+
+.rank-tier-2 { color: #c8a000; }
+.rank-tier-2 #rank-xp-fill, .rank-tier-2 .xp-fill-bar  { background: linear-gradient(90deg,#a07800,#e8c000); }
+
+.rank-tier-3 { color: #f0a820; }
+.rank-tier-3 #rank-xp-fill, .rank-tier-3 .xp-fill-bar  { background: linear-gradient(90deg,#c07800,#ffcc00); }
+
+.rank-tier-4 { color: #ff6600; }
+.rank-tier-4 #rank-xp-fill, .rank-tier-4 .xp-fill-bar  { background: linear-gradient(90deg,#cc4400,#ff8800); }
+
+/* ── Rank-Up Overlay ───────────────────────────────────────────── */
+#rankup-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.75);
+    z-index: 400;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeInOverlay 0.3s ease-out;
+}
+
+@keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
+
+#rankup-content {
+    text-align: center;
+    padding: 50px 70px;
+    border: 1px solid currentColor;
+    animation: rankupPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes rankupPop {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+}
+
+#rankup-label {
+    font-size: 0.75rem;
+    letter-spacing: 0.5em;
+    color: #888;
+    margin-bottom: 16px;
+}
+
+#rankup-badge {
+    font-size: 3.5rem;
+    line-height: 1;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 0 20px currentColor);
+}
+
+#rankup-name {
+    font-size: 1.8rem;
+    letter-spacing: 0.3em;
+    font-weight: bold;
+    margin-bottom: 8px;
+}
+
+#rankup-sub {
+    font-size: 0.72rem;
+    color: #666;
+    letter-spacing: 0.2em;
+}
+
 /* ── Statistics Screen ─────────────────────────────────────────── */
 .stats-content {
     max-width: 900px;
