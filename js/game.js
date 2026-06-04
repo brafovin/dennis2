@@ -66,192 +66,384 @@ class SniperGame {
 
     init() {
         this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.05;
+        this.renderer.outputEncoding = THREE.sRGBEncoding;
 
         this.scene = new THREE.Scene();
-        this.scene.fog = new THREE.Fog(0x8ab4cc, CONFIG.LEVEL.FOG_NEAR, CONFIG.LEVEL.FOG_FAR);
-        this.scene.background = new THREE.Color(0x7ab0cc);
+        this.scene.fog = new THREE.FogExp2(0xb8d4e8, 0.0018);
 
         this.mainCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 2000);
         this.mainCamera.position.copy(this.player.pos);
 
         this.bulletCamObj = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 2000);
 
-        // Lighting
-        const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+        // ── Lighting ───────────────────────────────────────────────────────
+        const ambient = new THREE.AmbientLight(0xd0e8ff, 0.55);
         this.scene.add(ambient);
 
-        const sun = new THREE.DirectionalLight(0xfff5e0, 1.1);
-        sun.position.set(300, 400, -200);
+        // Primary sun (warm afternoon angle)
+        const sun = new THREE.DirectionalLight(0xfff0cc, 1.4);
+        sun.position.set(180, 350, 120);
         sun.castShadow = true;
-        sun.shadow.mapSize.width = 2048;
+        sun.shadow.mapSize.width  = 2048;
         sun.shadow.mapSize.height = 2048;
-        sun.shadow.camera.near = 1;
-        sun.shadow.camera.far = 2000;
-        sun.shadow.camera.left = -600;
-        sun.shadow.camera.right = 600;
-        sun.shadow.camera.top = 600;
-        sun.shadow.camera.bottom = -600;
+        sun.shadow.camera.near   = 1;
+        sun.shadow.camera.far    = 1800;
+        sun.shadow.camera.left   = -500;
+        sun.shadow.camera.right  =  500;
+        sun.shadow.camera.top    =  500;
+        sun.shadow.camera.bottom = -500;
+        sun.shadow.bias = -0.0003;
         this.scene.add(sun);
 
-        const hemi = new THREE.HemisphereLight(0x6699ff, 0x44aa44, 0.3);
+        // Sky / ground hemisphere
+        const hemi = new THREE.HemisphereLight(0x88aadd, 0x5a7a3a, 0.55);
         this.scene.add(hemi);
+
+        // Subtle fill light from opposite side
+        const fill = new THREE.DirectionalLight(0x8899bb, 0.22);
+        fill.position.set(-200, 120, -300);
+        this.scene.add(fill);
 
         this.buildEnvironment();
         this.bindInput();
 
         window.addEventListener('resize', () => this.onResize());
-
         this.randomizeWind();
         this.loop();
     }
 
     buildEnvironment() {
-        // Ground
-        const groundGeo = new THREE.PlaneGeometry(CONFIG.LEVEL.SIZE, CONFIG.LEVEL.SIZE, 30, 30);
-        const groundMat = new THREE.MeshLambertMaterial({ color: 0x5a7a42 });
+        // ── Sky dome ───────────────────────────────────────────────────────
+        const skyGeo = new THREE.SphereGeometry(1450, 24, 12);
+        skyGeo.scale(-1, 1, 1);
+        const skyMat = new THREE.ShaderMaterial({
+            uniforms: {
+                topColor:    { value: new THREE.Color(0x2255aa) },
+                midColor:    { value: new THREE.Color(0x7ab2d4) },
+                horizColor:  { value: new THREE.Color(0xc8dce8) },
+            },
+            vertexShader: `
+                varying float vY;
+                void main() {
+                    vY = normalize(position).y;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 topColor;
+                uniform vec3 midColor;
+                uniform vec3 horizColor;
+                varying float vY;
+                void main() {
+                    float t = max(0.0, vY);
+                    float h = max(0.0, -vY * 3.0 + 0.3);
+                    vec3 col = mix(mix(horizColor, midColor, min(1.0, t * 2.5)), topColor, min(1.0, t * 1.3));
+                    col = mix(col, horizColor, clamp(h, 0.0, 1.0));
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            `,
+            side: THREE.BackSide,
+            depthWrite: false,
+        });
+        this.scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+        // ── Clouds (simple flat quads) ─────────────────────────────────────
+        const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false });
+        const cloudDefs = [
+            [0, 280, -400, 120, 30], [-200, 260, -600, 90, 25],
+            [300, 270, -800, 140, 35], [-350, 265, -300, 80, 22],
+            [150, 255, -1000, 160, 40], [-100, 275, -1100, 110, 28],
+        ];
+        for (const [cx, cy, cz, cw, ch] of cloudDefs) {
+            const cGeo = new THREE.PlaneGeometry(cw, ch);
+            const cloud = new THREE.Mesh(cGeo, cloudMat.clone());
+            cloud.position.set(cx, cy, cz);
+            cloud.rotation.x = -Math.PI / 2 + 0.15;
+            this.scene.add(cloud);
+        }
+
+        // ── Ground ─────────────────────────────────────────────────────────
+        const groundGeo = new THREE.PlaneGeometry(CONFIG.LEVEL.SIZE, CONFIG.LEVEL.SIZE, 60, 60);
+        // Subtle vertex color variation
+        const posAttr = groundGeo.attributes.position;
+        const colors = [];
+        for (let i = 0; i < posAttr.count; i++) {
+            const n = (Math.sin(posAttr.getX(i) * 0.04) * Math.cos(posAttr.getZ(i) * 0.06) + 1) * 0.5;
+            colors.push(0.30 + n * 0.06, 0.44 + n * 0.08, 0.20 + n * 0.04);
+        }
+        groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        const groundMat = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.90, metalness: 0.0,
+        });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
         ground.receiveShadow = true;
         this.scene.add(ground);
 
-        // Road / dirt path going forward (Z-axis)
-        const roadGeo = new THREE.PlaneGeometry(6, 1200);
-        const roadMat = new THREE.MeshLambertMaterial({ color: 0x888878 });
+        // Dirt patches
+        const dirtMat = new THREE.MeshStandardMaterial({ color: 0x8a7450, roughness: 0.95 });
+        for (const [dx, dz, ds] of [[0, -50, 14], [0, -500, 20], [0, -1000, 30]]) {
+            const dGeo = new THREE.PlaneGeometry(ds, ds * 0.7);
+            const d = new THREE.Mesh(dGeo, dirtMat);
+            d.rotation.x = -Math.PI / 2;
+            d.position.set(dx, 0.005, dz);
+            this.scene.add(d);
+        }
+
+        // Road (asphalt look)
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x5a5a52, roughness: 0.92, metalness: 0.0 });
+        const roadGeo = new THREE.PlaneGeometry(6, 1400);
         const road = new THREE.Mesh(roadGeo, roadMat);
         road.rotation.x = -Math.PI / 2;
-        road.position.set(0, 0.01, -500);
+        road.position.set(0, 0.012, -600);
+        road.receiveShadow = true;
         this.scene.add(road);
 
-        // Sniper nest platform
+        // Road center line
+        const lineGeo = new THREE.PlaneGeometry(0.2, 1400);
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xe8e060 });
+        const line = new THREE.Mesh(lineGeo, lineMat);
+        line.rotation.x = -Math.PI / 2;
+        line.position.set(0, 0.015, -600);
+        this.scene.add(line);
+
+        // ── Sniper nest ────────────────────────────────────────────────────
+        const nestMat = new THREE.MeshStandardMaterial({ color: 0x706050, roughness: 0.88, metalness: 0.05 });
         const nestGeo = new THREE.BoxGeometry(10, 6, 8);
-        const nestMat = new THREE.MeshLambertMaterial({ color: 0x7a6a50 });
         const nest = new THREE.Mesh(nestGeo, nestMat);
         nest.position.set(0, 0, 80);
         nest.castShadow = true;
         nest.receiveShadow = true;
         this.scene.add(nest);
 
-        // Sandbags in front
-        this.addSandbag(0, 3.05, 76);
-        this.addSandbag(1.4, 3.05, 76);
-        this.addSandbag(-1.4, 3.05, 76);
+        // Nest ledge / wall
+        const ledgeGeo = new THREE.BoxGeometry(10, 0.9, 0.5);
+        const ledge = new THREE.Mesh(ledgeGeo, nestMat);
+        ledge.position.set(0, 3.45, 75.75);
+        this.scene.add(ledge);
 
-        // Buildings at various distances
+        // Sandbags
+        for (let i = -2; i <= 2; i++) {
+            this.addSandbag(i * 1.4, 3.05, 76);
+        }
+
+        // ── Buildings ──────────────────────────────────────────────────────
         const buildingDefs = [
-            { x: 35,  z: -100, w: 12, h: 18, d: 10, c: 0x9a8878 },
-            { x: -40, z: -120, w: 10, h: 14, d: 10, c: 0x8a9878 },
-            { x: 50,  z: -200, w: 14, h: 20, d: 12, c: 0xa09080 },
-            { x: -55, z: -220, w: 16, h: 16, d: 12, c: 0x9a8870 },
-            { x: 60,  z: -350, w: 12, h: 22, d: 10, c: 0x88887a },
-            { x: -60, z: -380, w: 18, h: 18, d: 14, c: 0x909888 },
-            { x: 80,  z: -500, w: 16, h: 24, d: 14, c: 0x807870 },
-            { x: -80, z: -520, w: 14, h: 20, d: 12, c: 0x908878 },
-            { x: 100, z: -700, w: 20, h: 28, d: 16, c: 0x706a60 },
-            { x:-100, z: -750, w: 18, h: 22, d: 14, c: 0x787868 },
-            { x: 120, z: -900, w: 16, h: 20, d: 14, c: 0x706860 },
+            { x: 35,  z: -100, w: 12, h: 18, d: 10, c: 0x9a8878, rc: 0x7a6858 },
+            { x: -40, z: -120, w: 10, h: 14, d: 10, c: 0x8a9878, rc: 0x6a7858 },
+            { x: 50,  z: -200, w: 14, h: 20, d: 12, c: 0xa09080, rc: 0x806050 },
+            { x: -55, z: -220, w: 16, h: 16, d: 12, c: 0x9a8870, rc: 0x786848 },
+            { x: 60,  z: -350, w: 12, h: 22, d: 10, c: 0x88887a, rc: 0x686858 },
+            { x: -60, z: -380, w: 18, h: 18, d: 14, c: 0x909888, rc: 0x707868 },
+            { x: 80,  z: -500, w: 16, h: 24, d: 14, c: 0x807870, rc: 0x605848 },
+            { x: -80, z: -520, w: 14, h: 20, d: 12, c: 0x908878, rc: 0x706858 },
+            { x: 100, z: -700, w: 20, h: 28, d: 16, c: 0x706a60, rc: 0x504840 },
+            { x:-100, z: -750, w: 18, h: 22, d: 14, c: 0x787868, rc: 0x585848 },
+            { x: 120, z: -900, w: 16, h: 20, d: 14, c: 0x706860, rc: 0x504840 },
         ];
+        for (const def of buildingDefs) this.addBuilding(def);
 
-        for (const def of buildingDefs) {
-            this.addBuilding(def.x, def.z, def.w, def.h, def.d, def.c);
+        // ── Trees ──────────────────────────────────────────────────────────
+        const treeDefs = [
+            [-15,-80,1.0], [18,-90,1.1], [-25,-160,0.9], [22,-170,1.2],
+            [-30,-300,1.0], [35,-310,1.1], [-45,-450,0.8], [40,-460,1.3],
+            [-50,-600,1.0], [55,-590,0.9], [-60,-750,1.1], [65,-760,1.0],
+            [-70,-870,1.2], [70,-880,0.85], [-80,-950,1.0], [80,-960,1.15],
+            [-22,-130,0.9], [28,-240,1.0], [-38,-340,1.1], [42,-430,0.95],
+        ];
+        for (const [tx, tz, ts] of treeDefs) this.addTree(tx, tz, ts);
+
+        // ── Rocks & cover ──────────────────────────────────────────────────
+        const rockPos = [
+            [-10,-130], [12,-145], [-18,-290], [20,-280],
+            [-25,-420], [28,-410], [-35,-560], [38,-570],
+            [-48,-680], [45,-700],
+        ];
+        for (const [rx, rz] of rockPos) this.addRock(rx, rz);
+
+        // Concrete barriers / bollards
+        this.addBarrier(0, -100, 8, 1.8);
+        this.addBarrier(-15, -200, 5, 1.5);
+        this.addBarrier(18, -300, 6, 1.6);
+
+        // Distant hills (background)
+        const hillMat = new THREE.MeshStandardMaterial({ color: 0x5a7050, roughness: 1 });
+        for (const [hx, hz, hr, hh] of [
+            [400, -800, 180, 60], [-500, -900, 220, 80], [200, -1100, 160, 55],
+            [-300, -1000, 200, 70], [0, -1200, 250, 90],
+        ]) {
+            const hGeo = new THREE.SphereGeometry(hr, 10, 6, 0, Math.PI * 2, 0, Math.PI / 3);
+            const hill = new THREE.Mesh(hGeo, hillMat);
+            hill.position.set(hx, -hr * 0.55 + hh * 0.3, hz);
+            hill.scale.y = 0.28 + Math.random() * 0.1;
+            this.scene.add(hill);
         }
 
-        // Trees
-        const treePositions = [
-            [-15, -80], [18, -90], [-25, -160], [22, -170],
-            [-30, -300], [35, -310], [-45, -450], [40, -460],
-            [-50, -600], [55, -590], [-60, -750], [65, -760],
-            [-70, -870], [70, -880], [-80, -950], [80, -960],
-        ];
-        for (const [tx, tz] of treePositions) {
-            this.addTree(tx, tz);
-        }
-
-        // Rocks
-        const rockPositions = [
-            [-10, -130], [12, -145], [-18, -290], [20, -280],
-            [-25, -420], [28, -410], [-35, -560], [38, -570],
-        ];
-        for (const [rx, rz] of rockPositions) {
-            this.addRock(rx, rz);
-        }
-
-        // Wooden walls/barriers at various points
-        this.addWall(0, -100, 8, 2, 0.3);
-        this.addWall(-15, -200, 6, 1.8, 0.3);
-        this.addWall(15, -300, 8, 1.5, 0.3);
-
-        // Muzzle flash light (hidden by default)
+        // ── Muzzle flash light ─────────────────────────────────────────────
         const flashLight = new THREE.PointLight(0xffcc44, 5, 3);
         flashLight.visible = false;
         this.scene.add(flashLight);
         this.muzzleFlashLight = flashLight;
     }
 
-    addBuilding(x, z, w, h, d, color) {
-        const mat = new THREE.MeshLambertMaterial({ color });
-        const geo = new THREE.BoxGeometry(w, h, d);
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(x, h / 2, z);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        this.scene.add(mesh);
-        this.environmentMeshes.push(mesh);
+    addBuilding(def) {
+        const { x, z, w, h, d, c, rc } = def;
 
-        // Windows
-        const winMat = new THREE.MeshLambertMaterial({ color: 0x223344 });
-        const winGeo = new THREE.BoxGeometry(1.2, 1.4, 0.1);
-        const rows = Math.floor(h / 3.5);
-        const cols = Math.floor(w / 3.5);
+        const mat    = new THREE.MeshStandardMaterial({ color: c,  roughness: 0.82, metalness: 0.05 });
+        const roofMat= new THREE.MeshStandardMaterial({ color: rc, roughness: 0.80, metalness: 0.08 });
+        const darkMat= new THREE.MeshStandardMaterial({ color: 0x181818, roughness: 0.5, metalness: 0.3 });
+        const frameMat=new THREE.MeshStandardMaterial({ color: 0xccbbaa, roughness: 0.75 });
+
+        // Main body
+        const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        body.position.set(x, h / 2, z);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        this.scene.add(body);
+        this.environmentMeshes.push(body);
+
+        // Roof ledge
+        const ledgeGeo = new THREE.BoxGeometry(w + 0.6, 0.5, d + 0.6);
+        const ledge = new THREE.Mesh(ledgeGeo, roofMat);
+        ledge.position.set(x, h + 0.25, z);
+        ledge.castShadow = true;
+        this.scene.add(ledge);
+
+        // Roof
+        const roofGeo = new THREE.BoxGeometry(w - 0.3, 0.3, d - 0.3);
+        const roof = new THREE.Mesh(roofGeo, roofMat);
+        roof.position.set(x, h + 0.65, z);
+        this.scene.add(roof);
+
+        // Corner columns (slightly darker to suggest structure)
+        const colMat = new THREE.MeshStandardMaterial({ color: ((c & 0xfefefe) >> 1), roughness: 0.85 });
+        for (const [cx, cz] of [[-w/2, -d/2], [w/2, -d/2], [-w/2, d/2], [w/2, d/2]]) {
+            const colGeo = new THREE.BoxGeometry(0.7, h + 0.1, 0.7);
+            const col = new THREE.Mesh(colGeo, colMat);
+            col.position.set(x + cx, h / 2, z + cz);
+            col.castShadow = true;
+            this.scene.add(col);
+        }
+
+        // Windows with frames
+        const rows = Math.floor(h / 3.8);
+        const cols = Math.floor(w / 3.2);
+        const startX = x - w / 2 + 1.8;
         for (let r = 1; r <= rows - 1; r++) {
-            for (let c = 0; c < cols; c++) {
-                const win = new THREE.Mesh(winGeo, winMat);
-                win.position.set(x - w / 2 + 1.8 + c * 3.5, r * 3.5 - 0.5, z + d / 2 + 0.05);
-                this.scene.add(win);
+            for (let col = 0; col < cols - 1; col++) {
+                const wx = startX + col * 3.2;
+                const wy = r * 3.8 - 0.5;
+                const wz = z + d / 2;
+
+                // Window glass
+                const glassGeo = new THREE.BoxGeometry(1.3, 1.6, 0.08);
+                const glass = new THREE.Mesh(glassGeo, darkMat);
+                glass.position.set(wx, wy, wz + 0.01);
+                this.scene.add(glass);
+
+                // Window frame
+                const frameGeo = new THREE.BoxGeometry(1.55, 1.85, 0.06);
+                const frame = new THREE.Mesh(frameGeo, frameMat);
+                frame.position.set(wx, wy, wz);
+                this.scene.add(frame);
+
+                // Window sill
+                const sillGeo = new THREE.BoxGeometry(1.6, 0.1, 0.18);
+                const sill = new THREE.Mesh(sillGeo, frameMat);
+                sill.position.set(wx, wy - 0.93, wz + 0.05);
+                this.scene.add(sill);
             }
         }
+
+        // Door
+        const doorGeo = new THREE.BoxGeometry(1.4, 2.4, 0.08);
+        const door = new THREE.Mesh(doorGeo, new THREE.MeshStandardMaterial({ color: 0x4a3820, roughness: 0.85 }));
+        door.position.set(x, 1.2, z + d / 2 + 0.01);
+        this.scene.add(door);
+        const doorFrameGeo = new THREE.BoxGeometry(1.7, 2.7, 0.06);
+        const doorFrame = new THREE.Mesh(doorFrameGeo, frameMat);
+        doorFrame.position.set(x, 1.35, z + d / 2);
+        this.scene.add(doorFrame);
     }
 
     addSandbag(x, y, z) {
-        const geo = new THREE.BoxGeometry(1.2, 0.55, 0.55);
-        const mat = new THREE.MeshLambertMaterial({ color: 0xb8a070 });
+        const geo = new THREE.BoxGeometry(1.15, 0.52, 0.52);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xb8a472, roughness: 0.94, metalness: 0 });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(x, y, z);
+        mesh.rotation.y = (Math.random() - 0.5) * 0.15;
+        mesh.castShadow = true;
         this.scene.add(mesh);
     }
 
-    addTree(x, z) {
-        const trunkGeo = new THREE.CylinderGeometry(0.2, 0.28, 2.5, 6);
-        const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3e28 });
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.set(x, 1.25, z);
+    addTree(x, z, scale = 1.0) {
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.95, metalness: 0 });
+        const foliage1Mat = new THREE.MeshStandardMaterial({ color: 0x2d5822, roughness: 0.95 });
+        const foliage2Mat = new THREE.MeshStandardMaterial({ color: 0x3a6a28, roughness: 0.95 });
+
+        const trunkH = 2.8 * scale;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18 * scale, 0.26 * scale, trunkH, 7), trunkMat);
+        trunk.position.set(x, trunkH / 2, z);
+        trunk.castShadow = true;
         this.scene.add(trunk);
 
-        const fGeo = new THREE.ConeGeometry(1.8, 3.5, 7);
-        const fMat = new THREE.MeshLambertMaterial({ color: 0x2d5a1f });
-        const foliage = new THREE.Mesh(fGeo, fMat);
-        foliage.position.set(x, 4.2, z);
-        this.scene.add(foliage);
+        // Multi-layer foliage
+        const layerDefs = [
+            { r: 2.0 * scale, h: 3.2 * scale, y: trunkH + 0.8 * scale, mat: foliage1Mat },
+            { r: 1.5 * scale, h: 2.4 * scale, y: trunkH + 2.2 * scale, mat: foliage2Mat },
+            { r: 1.0 * scale, h: 1.8 * scale, y: trunkH + 3.2 * scale, mat: foliage1Mat },
+        ];
+        for (const l of layerDefs) {
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(l.r, l.h, 8), l.mat);
+            cone.position.set(x, l.y, z);
+            cone.rotation.y = Math.random() * Math.PI;
+            cone.castShadow = true;
+            this.scene.add(cone);
+        }
     }
 
     addRock(x, z) {
-        const geo = new THREE.DodecahedronGeometry(1.0 + Math.random() * 0.5, 0);
-        const mat = new THREE.MeshLambertMaterial({ color: 0x888880 });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(x, 0.5, z);
-        mesh.rotation.y = Math.random() * Math.PI;
-        this.scene.add(mesh);
+        const s = 0.8 + Math.random() * 0.9;
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x787870,
+            roughness: 0.92,
+            metalness: 0.04,
+        });
+        const geo = new THREE.DodecahedronGeometry(s, 0);
+        // Flatten rocks
+        const rock = new THREE.Mesh(geo, mat);
+        rock.scale.y = 0.55 + Math.random() * 0.2;
+        rock.position.set(x, s * 0.28, z);
+        rock.rotation.y = Math.random() * Math.PI;
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        this.scene.add(rock);
     }
 
-    addWall(x, z, width, height, depth) {
-        const geo = new THREE.BoxGeometry(width, height, depth);
-        const mat = new THREE.MeshLambertMaterial({ color: 0xa09070 });
+    addBarrier(x, z, width, height) {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x8a8880, roughness: 0.88, metalness: 0.06 });
+        const geo = new THREE.BoxGeometry(width, height, 0.36);
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(x, height / 2, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         this.scene.add(mesh);
+
+        // Barrier chevron stripe
+        const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+        for (let i = 0; i < 3; i++) {
+            const sGeo = new THREE.BoxGeometry(0.4, height * 0.7, 0.38);
+            const s = new THREE.Mesh(sGeo, stripeMat);
+            s.position.set(x - width / 2 + 1 + i * 2.8, height / 2, z);
+            this.scene.add(s);
+        }
     }
 
     spawnTargets(missionDef) {
@@ -409,9 +601,10 @@ class SniperGame {
         }
         this.weaponGroup = weaponSystem.buildWeaponMesh(this.weaponId, THREE);
 
-        // Position weapon in lower right of camera view
-        this.weaponGroup.position.set(0.18, -0.14, -0.38);
+        // FP weapon position — lower right, slight inward lean
+        this.weaponGroup.position.set(0.20, -0.165, -0.36);
         this.weaponGroup.rotation.y = Math.PI;
+        this.weaponGroup.rotation.z = -0.04;
 
         this.mainCamera.add(this.weaponGroup);
         this.scene.add(this.mainCamera);

@@ -70,138 +70,321 @@ class WeaponSystem {
     }
 
     buildWeaponMesh(weaponId, THREE) {
-        const stats = this.getEffectiveStats(weaponId);
         const loadout = this.loadouts[weaponId];
         const skinColor = this.getSkinColor(weaponId);
         const group = new THREE.Group();
 
-        const mat = new THREE.MeshLambertMaterial({ color: skinColor });
-        const darkMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
-        const metalMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
-        const scopeMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+        // ── Materials (PBR) ────────────────────────────────────────────────
+        const stockMat   = new THREE.MeshStandardMaterial({ color: skinColor,  metalness: 0.06, roughness: 0.72 });
+        const metalDark  = new THREE.MeshStandardMaterial({ color: 0x1e1e1e,   metalness: 0.90, roughness: 0.28 });
+        const metalMid   = new THREE.MeshStandardMaterial({ color: 0x2e2e2e,   metalness: 0.88, roughness: 0.32 });
+        const metalSilv  = new THREE.MeshStandardMaterial({ color: 0x787878,   metalness: 0.95, roughness: 0.18 });
+        const scopeMat   = new THREE.MeshStandardMaterial({ color: 0x0e0e0e,   metalness: 0.85, roughness: 0.22 });
+        const lensMat    = new THREE.MeshStandardMaterial({ color: 0x1a2a3a,   metalness: 0.40, roughness: 0.05, transparent: true, opacity: 0.88 });
+        const rubberMat  = new THREE.MeshStandardMaterial({ color: 0x141414,   metalness: 0.00, roughness: 0.92 });
 
-        // Receiver body
-        const receiverGeo = new THREE.BoxGeometry(0.055, 0.06, 0.32);
-        const receiver = new THREE.Mesh(receiverGeo, mat);
-        receiver.position.set(0, 0, -0.05);
-        group.add(receiver);
+        // ── Barrel ─────────────────────────────────────────────────────────
+        const bLen = (weaponId === 'barrett' || weaponId === 'cheytac' || weaponId === 'tac50') ? 0.80 : 0.65;
+        const bZ   = -(0.04 + bLen / 2);
 
-        // Barrel
-        const barrelLen = (weaponId === 'barrett' || weaponId === 'cheytac' || weaponId === 'tac50') ? 0.82 : 0.68;
-        const barrelGeo = new THREE.CylinderGeometry(0.012, 0.014, barrelLen, 8);
-        const barrel = new THREE.Mesh(barrelGeo, metalMat);
+        // Main barrel cylinder (tapered)
+        const barrelGeo = new THREE.CylinderGeometry(0.010, 0.013, bLen, 14);
+        const barrel = new THREE.Mesh(barrelGeo, metalDark);
         barrel.rotation.x = Math.PI / 2;
-        barrel.position.set(0, 0.005, -(0.05 + barrelLen / 2));
+        barrel.position.set(0.008, 0.004, bZ);
+        barrel.castShadow = true;
         group.add(barrel);
 
-        // Suppressor
-        if (loadout.barrel === 'suppressor') {
-            const supGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.18, 8);
-            const sup = new THREE.Mesh(supGeo, darkMat);
-            sup.rotation.x = Math.PI / 2;
-            sup.position.set(0, 0.005, barrel.position.z - barrelLen / 2 - 0.09);
-            group.add(sup);
+        // Fluted / stepped section near muzzle
+        const stepGeo = new THREE.CylinderGeometry(0.013, 0.013, bLen * 0.18, 14);
+        const step = new THREE.Mesh(stepGeo, metalMid);
+        step.rotation.x = Math.PI / 2;
+        step.position.set(0.008, 0.004, -(0.04 + bLen * 0.09));
+        group.add(step);
+
+        // ── Receiver / action ──────────────────────────────────────────────
+        const recGeo = new THREE.BoxGeometry(0.048, 0.048, 0.30);
+        const receiver = new THREE.Mesh(recGeo, metalDark);
+        receiver.position.set(0, 0.004, -0.015);
+        receiver.castShadow = true;
+        group.add(receiver);
+
+        // Receiver side panels (lighter shade creates visual depth)
+        const sidePanelGeo = new THREE.BoxGeometry(0.055, 0.036, 0.26);
+        const sidePanel = new THREE.Mesh(sidePanelGeo, metalMid);
+        sidePanel.position.set(0, 0.000, -0.015);
+        group.add(sidePanel);
+
+        // Top rail (Picatinny)
+        const railGeo = new THREE.BoxGeometry(0.022, 0.010, 0.28);
+        const rail = new THREE.Mesh(railGeo, metalSilv);
+        rail.position.set(0, 0.030, -0.015);
+        group.add(rail);
+        // Rail serrations (visual)
+        for (let i = 0; i < 5; i++) {
+            const notchGeo = new THREE.BoxGeometry(0.024, 0.003, 0.004);
+            const notch = new THREE.Mesh(notchGeo, metalDark);
+            notch.position.set(0, 0.030, -0.10 + i * 0.045);
+            group.add(notch);
         }
 
-        // Muzzle brake
-        if (loadout.barrel === 'muzzle') {
-            const mbGeo = new THREE.CylinderGeometry(0.02, 0.016, 0.05, 8);
-            const mb = new THREE.Mesh(mbGeo, metalMat);
-            mb.rotation.x = Math.PI / 2;
-            mb.position.set(0, 0.005, barrel.position.z - barrelLen / 2 - 0.025);
-            group.add(mb);
+        // Bolt handle (right side)
+        const boltArmGeo = new THREE.CylinderGeometry(0.0045, 0.0045, 0.035, 7);
+        const boltArm = new THREE.Mesh(boltArmGeo, metalSilv);
+        boltArm.rotation.z = Math.PI / 2;
+        boltArm.position.set(-0.042, 0.004, 0.030);
+        group.add(boltArm);
+        const boltKnobGeo = new THREE.SphereGeometry(0.010, 10, 10);
+        const boltKnob = new THREE.Mesh(boltKnobGeo, metalSilv);
+        boltKnob.position.set(-0.060, 0.004, 0.030);
+        group.add(boltKnob);
+
+        // Ejection port (dark recess)
+        const portGeo = new THREE.BoxGeometry(0.006, 0.022, 0.055);
+        const port = new THREE.Mesh(portGeo, new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 0.9 }));
+        port.position.set(-0.028, 0.004, 0.005);
+        group.add(port);
+
+        // ── Scope ──────────────────────────────────────────────────────────
+        const sLen = scopeDataLen(loadout.scope);
+        const sY   = 0.072;
+        const sZ   = -0.02;
+
+        // Main scope tube
+        const tubeGeo = new THREE.CylinderGeometry(0.019, 0.019, sLen, 16);
+        const scopeTube = new THREE.Mesh(tubeGeo, scopeMat);
+        scopeTube.rotation.x = Math.PI / 2;
+        scopeTube.position.set(0, sY, sZ);
+        group.add(scopeTube);
+
+        // Objective bell (tapered, wider at front)
+        const objBellGeo = new THREE.CylinderGeometry(0.025, 0.019, 0.052, 16);
+        const objBell = new THREE.Mesh(objBellGeo, scopeMat);
+        objBell.rotation.x = Math.PI / 2;
+        objBell.position.set(0, sY, sZ - sLen / 2 - 0.026);
+        group.add(objBell);
+
+        // Objective lens cap + glass
+        const objCapGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.008, 16);
+        const objCap = new THREE.Mesh(objCapGeo, metalDark);
+        objCap.rotation.x = Math.PI / 2;
+        objCap.position.set(0, sY, sZ - sLen / 2 - 0.054);
+        group.add(objCap);
+        const objGlassGeo = new THREE.CircleGeometry(0.022, 16);
+        const objGlass = new THREE.Mesh(objGlassGeo, lensMat);
+        objGlass.rotation.y = Math.PI / 2;
+        objGlass.position.set(-0.001, sY, sZ - sLen / 2 - 0.059);
+        group.add(objGlass);
+
+        // Eyepiece (wider than tube)
+        const eyeGeo = new THREE.CylinderGeometry(0.022, 0.019, 0.038, 16);
+        const eyepiece = new THREE.Mesh(eyeGeo, scopeMat);
+        eyepiece.rotation.x = Math.PI / 2;
+        eyepiece.position.set(0, sY, sZ + sLen / 2 + 0.019);
+        group.add(eyepiece);
+        const eyeRimGeo = new THREE.CylinderGeometry(0.024, 0.022, 0.010, 16);
+        const eyeRim = new THREE.Mesh(eyeRimGeo, rubberMat);
+        eyeRim.rotation.x = Math.PI / 2;
+        eyeRim.position.set(0, sY, sZ + sLen / 2 + 0.042);
+        group.add(eyeRim);
+
+        // Elevation turret (top center)
+        const elevBodyGeo = new THREE.CylinderGeometry(0.0075, 0.0075, 0.026, 10);
+        const elevBody = new THREE.Mesh(elevBodyGeo, metalSilv);
+        elevBody.position.set(0, sY + 0.027, sZ);
+        group.add(elevBody);
+        const elevCapGeo = new THREE.CylinderGeometry(0.0065, 0.0075, 0.008, 10);
+        const elevCap = new THREE.Mesh(elevCapGeo, rubberMat);
+        elevCap.position.set(0, sY + 0.043, sZ);
+        group.add(elevCap);
+
+        // Windage turret (side)
+        const windBodyGeo = new THREE.CylinderGeometry(0.0075, 0.0075, 0.026, 10);
+        const windBody = new THREE.Mesh(windBodyGeo, metalSilv);
+        windBody.rotation.z = Math.PI / 2;
+        windBody.position.set(-0.027, sY, sZ);
+        group.add(windBody);
+
+        // Scope rings (silver, clearly visible)
+        const ringOffsets = [-sLen * 0.30, sLen * 0.30];
+        for (const rz of ringOffsets) {
+            // Ring body (torus)
+            const ringGeo = new THREE.TorusGeometry(0.022, 0.0065, 8, 16);
+            const ring = new THREE.Mesh(ringGeo, metalSilv);
+            ring.rotation.y = Math.PI / 2;
+            ring.position.set(0, sY, sZ + rz);
+            group.add(ring);
+            // Ring base (connects to rail)
+            const rBaseGeo = new THREE.BoxGeometry(0.016, 0.020, 0.020);
+            const rBase = new THREE.Mesh(rBaseGeo, metalSilv);
+            rBase.position.set(0, sY - 0.028, sZ + rz);
+            group.add(rBase);
+            // Ring bolt
+            const boltGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.012, 6);
+            const rbolt = new THREE.Mesh(boltGeo, metalDark);
+            rbolt.position.set(-0.013, sY - 0.019, sZ + rz);
+            group.add(rbolt);
         }
 
-        // Stock
-        const stockLen = loadout.stock === 'adjustable' ? 0.30 : 0.26;
-        const stockGeo = new THREE.BoxGeometry(0.04, 0.048, stockLen);
-        const stock = new THREE.Mesh(stockGeo, mat);
-        stock.position.set(0, -0.005, 0.16 + stockLen / 2);
-        group.add(stock);
+        // ── Stock ──────────────────────────────────────────────────────────
+        const stLen = loadout.stock === 'adjustable' ? 0.29 : 0.25;
 
-        // Cheekpiece
-        const cpGeo = new THREE.BoxGeometry(0.035, 0.04, 0.1);
-        const cp = new THREE.Mesh(cpGeo, mat);
-        cp.position.set(0, 0.04, 0.22);
+        // Main stock body
+        const stGeo = new THREE.BoxGeometry(0.038, 0.042, stLen);
+        const stockMesh = new THREE.Mesh(stGeo, stockMat);
+        stockMesh.position.set(0, -0.002, 0.135 + stLen / 2);
+        stockMesh.castShadow = true;
+        group.add(stockMesh);
+
+        // Cheekpiece (raised)
+        const cpGeo = new THREE.BoxGeometry(0.034, 0.034, 0.11);
+        const cp = new THREE.Mesh(cpGeo, stockMat);
+        cp.position.set(0, 0.036, 0.175);
         group.add(cp);
 
-        // Pistol grip
-        const gripGeo = new THREE.BoxGeometry(0.032, 0.1, 0.045);
-        const grip = new THREE.Mesh(gripGeo, darkMat);
-        grip.rotation.x = 0.3;
-        grip.position.set(0, -0.06, 0.08);
+        // Recoil pad (rubber)
+        const padGeo = new THREE.BoxGeometry(0.040, 0.056, 0.012);
+        const pad = new THREE.Mesh(padGeo, rubberMat);
+        pad.position.set(0, 0.003, 0.135 + stLen);
+        group.add(pad);
+
+        // Adjustable stock hardware
+        if (loadout.stock === 'adjustable') {
+            const adjRailGeo = new THREE.BoxGeometry(0.016, 0.008, 0.09);
+            const adjRail = new THREE.Mesh(adjRailGeo, metalSilv);
+            adjRail.position.set(0, -0.024, 0.24);
+            group.add(adjRail);
+        }
+
+        // ── Pistol Grip ────────────────────────────────────────────────────
+        const gripGeo = new THREE.BoxGeometry(0.028, 0.085, 0.038);
+        const grip = new THREE.Mesh(gripGeo, rubberMat);
+        grip.rotation.x = 0.34;
+        grip.position.set(0, -0.054, 0.074);
+        grip.castShadow = true;
         group.add(grip);
 
-        // Trigger guard
-        const tgGeo = new THREE.TorusGeometry(0.022, 0.005, 4, 8, Math.PI);
-        const tg = new THREE.Mesh(tgGeo, metalMat);
+        // Grip finger grooves (visual detail)
+        for (let i = 0; i < 3; i++) {
+            const grooveGeo = new THREE.BoxGeometry(0.030, 0.004, 0.008);
+            const groove = new THREE.Mesh(grooveGeo, new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.95 }));
+            groove.rotation.x = 0.34;
+            groove.position.set(0, -0.034 - i * 0.018, 0.068 - i * 0.006);
+            group.add(groove);
+        }
+
+        // ── Trigger & Guard ────────────────────────────────────────────────
+        const tgGeo = new THREE.TorusGeometry(0.019, 0.0038, 5, 12, Math.PI);
+        const tg = new THREE.Mesh(tgGeo, metalSilv);
         tg.rotation.z = Math.PI;
-        tg.position.set(0, -0.04, 0.05);
+        tg.position.set(0, -0.035, 0.044);
         group.add(tg);
 
-        // Scope base rail
-        const railGeo = new THREE.BoxGeometry(0.025, 0.012, 0.24);
-        const rail = new THREE.Mesh(railGeo, metalMat);
-        rail.position.set(0, 0.038, -0.02);
-        group.add(rail);
+        const trigGeo = new THREE.BoxGeometry(0.004, 0.022, 0.006);
+        const trig = new THREE.Mesh(trigGeo, metalSilv);
+        trig.position.set(0, -0.040, 0.044);
+        group.add(trig);
 
-        // Scope body
-        const scopeBodyGeo = new THREE.CylinderGeometry(0.022, 0.022, scopeDataLen(loadout.scope), 12);
-        const scopeBody = new THREE.Mesh(scopeBodyGeo, scopeMat);
-        scopeBody.rotation.x = Math.PI / 2;
-        scopeBody.position.set(0, 0.065, -0.02);
-        group.add(scopeBody);
+        // ── Forend / Handguard ─────────────────────────────────────────────
+        const feGeo = new THREE.BoxGeometry(0.040, 0.028, 0.30);
+        const forend = new THREE.Mesh(feGeo, stockMat);
+        forend.position.set(0.004, -0.024, -0.165);
+        group.add(forend);
 
-        // Scope objective lens
-        const lensGeo = new THREE.CylinderGeometry(0.026, 0.022, 0.04, 12);
-        const lens = new THREE.Mesh(lensGeo, darkMat);
-        lens.rotation.x = Math.PI / 2;
-        lens.position.set(0, 0.065, scopeBody.position.z - scopeDataLen(loadout.scope) / 2 - 0.02);
-        group.add(lens);
+        // Forend bottom rail
+        const feRailGeo = new THREE.BoxGeometry(0.018, 0.007, 0.26);
+        const feRail = new THREE.Mesh(feRailGeo, metalSilv);
+        feRail.position.set(0.004, -0.042, -0.165);
+        group.add(feRail);
 
-        // Scope eye piece
-        const eyeGeo = new THREE.CylinderGeometry(0.024, 0.026, 0.035, 12);
-        const eye = new THREE.Mesh(eyeGeo, darkMat);
-        eye.rotation.x = Math.PI / 2;
-        eye.position.set(0, 0.065, scopeBody.position.z + scopeDataLen(loadout.scope) / 2 + 0.017);
-        group.add(eye);
-
-        // Scope turrets
-        const turretGeo = new THREE.CylinderGeometry(0.007, 0.007, 0.022, 6);
-        const turret1 = new THREE.Mesh(turretGeo, metalMat);
-        turret1.position.set(0, 0.09, -0.02);
-        group.add(turret1);
-        const turret2 = new THREE.Mesh(turretGeo, metalMat);
-        turret2.rotation.z = Math.PI / 2;
-        turret2.position.set(0.035, 0.065, -0.02);
-        group.add(turret2);
-
-        // Bipod
-        if (loadout.under === 'bipod') {
-            const legGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.18, 6);
-            const l1 = new THREE.Mesh(legGeo, metalMat);
-            l1.rotation.z = 0.25;
-            l1.position.set(-0.05, -0.1, -0.25);
-            group.add(l1);
-            const l2 = new THREE.Mesh(legGeo, metalMat);
-            l2.rotation.z = -0.25;
-            l2.position.set(0.05, -0.1, -0.25);
-            group.add(l2);
-        }
-
-        // Foregrip
-        if (loadout.under === 'foregrip') {
-            const fgGeo = new THREE.BoxGeometry(0.028, 0.07, 0.028);
-            const fg = new THREE.Mesh(fgGeo, darkMat);
-            fg.position.set(0, -0.05, -0.2);
-            group.add(fg);
-        }
-
-        // Magazine
-        const magGeo = new THREE.BoxGeometry(0.038, 0.07, 0.055);
-        const mag = new THREE.Mesh(magGeo, darkMat);
-        mag.position.set(0, -0.065, -0.02);
+        // ── Magazine ───────────────────────────────────────────────────────
+        const magH = weaponId === 'barrett' ? 0.110 : 0.068;
+        const magGeo = new THREE.BoxGeometry(0.032, magH, 0.050);
+        const mag = new THREE.Mesh(magGeo, metalDark);
+        mag.position.set(0, -(0.024 + magH / 2), -0.012);
         group.add(mag);
+        // Mag release button
+        const mrbGeo = new THREE.BoxGeometry(0.008, 0.010, 0.010);
+        const mrb = new THREE.Mesh(mrbGeo, metalSilv);
+        mrb.position.set(-0.028, -0.025, 0.010);
+        group.add(mrb);
+
+        // ── Barrel Attachments ─────────────────────────────────────────────
+        const muzzleZ = -(0.04 + bLen);
+
+        if (loadout.barrel === 'suppressor') {
+            const supGeo = new THREE.CylinderGeometry(0.019, 0.019, 0.17, 14);
+            const supMat = new THREE.MeshStandardMaterial({ color: 0x141414, metalness: 0.85, roughness: 0.22 });
+            const sup = new THREE.Mesh(supGeo, supMat);
+            sup.rotation.x = Math.PI / 2;
+            sup.position.set(0.008, 0.004, muzzleZ - 0.085);
+            group.add(sup);
+            // Suppressor end cap
+            const scapGeo = new THREE.CylinderGeometry(0.019, 0.017, 0.012, 14);
+            const scap = new THREE.Mesh(scapGeo, supMat);
+            scap.rotation.x = Math.PI / 2;
+            scap.position.set(0.008, 0.004, muzzleZ - 0.176);
+            group.add(scap);
+            // Suppressor knurl rings
+            for (let i = 0; i < 4; i++) {
+                const kGeo = new THREE.CylinderGeometry(0.0195, 0.0195, 0.006, 14);
+                const k = new THREE.Mesh(kGeo, metalDark);
+                k.rotation.x = Math.PI / 2;
+                k.position.set(0.008, 0.004, muzzleZ - 0.03 - i * 0.038);
+                group.add(k);
+            }
+        } else if (loadout.barrel === 'muzzle') {
+            const mbGeo = new THREE.CylinderGeometry(0.017, 0.011, 0.046, 10);
+            const mb = new THREE.Mesh(mbGeo, metalSilv);
+            mb.rotation.x = Math.PI / 2;
+            mb.position.set(0.008, 0.004, muzzleZ - 0.023);
+            group.add(mb);
+            // Brake ports
+            for (let i = 0; i < 2; i++) {
+                const pGeo = new THREE.BoxGeometry(0.038, 0.010, 0.008);
+                const pm = new THREE.Mesh(pGeo, metalDark);
+                pm.position.set(0.008, 0.008 - i * 0.016, muzzleZ - 0.022 - i * 0.010);
+                group.add(pm);
+            }
+        } else {
+            // Crown / muzzle end
+            const crownGeo = new THREE.CylinderGeometry(0.013, 0.010, 0.010, 14);
+            const crown = new THREE.Mesh(crownGeo, metalSilv);
+            crown.rotation.x = Math.PI / 2;
+            crown.position.set(0.008, 0.004, muzzleZ - 0.005);
+            group.add(crown);
+        }
+
+        // ── Underbarrel Attachments ────────────────────────────────────────
+        if (loadout.under === 'bipod') {
+            const pivotGeo = new THREE.BoxGeometry(0.036, 0.014, 0.022);
+            const pivot = new THREE.Mesh(pivotGeo, metalSilv);
+            pivot.position.set(0.004, -0.044, -0.22);
+            group.add(pivot);
+            for (const side of [-1, 1]) {
+                const legGeo = new THREE.CylinderGeometry(0.004, 0.004, 0.21, 7);
+                const leg = new THREE.Mesh(legGeo, metalMid);
+                leg.rotation.z = side * 0.26;
+                leg.position.set(side * 0.050, -0.148, -0.22);
+                group.add(leg);
+                const footGeo = new THREE.BoxGeometry(0.010, 0.006, 0.026);
+                const foot = new THREE.Mesh(footGeo, rubberMat);
+                foot.position.set(side * 0.064, -0.248, -0.22);
+                group.add(foot);
+            }
+        } else if (loadout.under === 'foregrip') {
+            const fgBodyGeo = new THREE.BoxGeometry(0.024, 0.072, 0.026);
+            const fg = new THREE.Mesh(fgBodyGeo, rubberMat);
+            fg.rotation.x = 0.08;
+            fg.position.set(0.004, -0.066, -0.22);
+            group.add(fg);
+            // Foregrip cap
+            const fgCapGeo = new THREE.SphereGeometry(0.014, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+            const fgCap = new THREE.Mesh(fgCapGeo, rubberMat);
+            fgCap.rotation.x = Math.PI;
+            fgCap.position.set(0.004, -0.102, -0.22);
+            group.add(fgCap);
+        }
 
         return group;
     }
