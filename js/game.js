@@ -6,6 +6,7 @@ class SniperGame {
         this.mainCamera = null;
         this.bulletCamObj = null;
         this.renderTarget = null;
+        this.composer = null;
 
         this.player = {
             yaw: 0,
@@ -133,8 +134,8 @@ class SniperGame {
         const sun = new THREE.DirectionalLight(0xfff0cc, 1.4);
         sun.position.set(180, 350, 120);
         sun.castShadow = true;
-        sun.shadow.mapSize.width  = 2048;
-        sun.shadow.mapSize.height = 2048;
+        sun.shadow.mapSize.width  = 3072;
+        sun.shadow.mapSize.height = 3072;
         sun.shadow.camera.near   = 1;
         sun.shadow.camera.far    = 1800;
         sun.shadow.camera.left   = -500;
@@ -154,8 +155,14 @@ class SniperGame {
         fill.position.set(-200, 120, -300);
         this.scene.add(fill);
 
+        // Kühles Gegenlicht (Rim) für mehr Plastizität an Kanten
+        const rim = new THREE.DirectionalLight(0xbfd0ff, 0.25);
+        rim.position.set(-120, 80, 240);
+        this.scene.add(rim);
+
         this.buildEnvironment();
         this._buildEnvMap();
+        this._setupPostFX();
         this.bindInput();
 
         window.addEventListener('resize', () => this.onResize());
@@ -209,18 +216,32 @@ class SniperGame {
         this._skyMat = skyMat;
         this.scene.add(new THREE.Mesh(skyGeo, skyMat));
 
-        // ── Clouds (simple flat quads) ─────────────────────────────────────
-        const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false });
-        const cloudDefs = [
-            [0, 280, -400, 120, 30], [-200, 260, -600, 90, 25],
-            [300, 270, -800, 140, 35], [-350, 265, -300, 80, 22],
-            [150, 255, -1000, 160, 40], [-100, 275, -1100, 110, 28],
-        ];
-        for (const [cx, cy, cz, cw, ch] of cloudDefs) {
-            const cGeo = new THREE.PlaneGeometry(cw, ch);
-            const cloud = new THREE.Mesh(cGeo, cloudMat.clone());
-            cloud.position.set(cx, cy, cz);
-            cloud.rotation.x = -Math.PI / 2 + 0.15;
+        // ── Clouds (soft drifting billboards) ──────────────────────────────
+        this.clouds = [];
+        const cloudTex = this._makeTexture(128, (ctx, s) => {
+            ctx.clearRect(0, 0, s, s);
+            for (let i = 0; i < 16; i++) {
+                const r = s * (0.12 + Math.random() * 0.2);
+                const cx = s * (0.2 + Math.random() * 0.6);
+                const cy = s * (0.32 + Math.random() * 0.38);
+                const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+                g.addColorStop(0, 'rgba(255,255,255,0.55)');
+                g.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+        cloudTex.wrapS = cloudTex.wrapT = THREE.ClampToEdgeWrapping;
+        const cloudMat = new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
+        for (let i = 0; i < 20; i++) {
+            const cw = 130 + Math.random() * 230;
+            const cloud = new THREE.Mesh(new THREE.PlaneGeometry(cw, cw * 0.5), cloudMat.clone());
+            cloud.position.set((Math.random() - 0.5) * 1900, 235 + Math.random() * 130, -150 - Math.random() * 1200);
+            cloud.rotation.x = -Math.PI / 2 + 0.12;
+            cloud.userData.speed = 2 + Math.random() * 3.5;
+            this.clouds.push(cloud);
             this.scene.add(cloud);
         }
 
@@ -355,6 +376,9 @@ class SniperGame {
 
         this.addSunFlare();
         this.addDust();
+        this.addMountains();
+        this.addGrassField();
+        this.addRoadsideProps();
 
         // ── Muzzle flash light ─────────────────────────────────────────────
         const flashLight = new THREE.PointLight(0xffcc44, 5, 3);
@@ -528,6 +552,7 @@ class SniperGame {
         fn(ctx, size);
         const tex = new THREE.CanvasTexture(cv);
         tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        if (this.renderer) tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
         return tex;
     }
 
@@ -814,6 +839,257 @@ class SniperGame {
         rearBump.position.set(0, 0.42, 2.15);
         group.add(rearBump);
         this.scene.add(group);
+    }
+
+    // ── Post-Processing (Bloom) – robust mit Fallback ──────────────────────
+    _setupPostFX() {
+        try {
+            const ok = THREE.EffectComposer && THREE.RenderPass && THREE.ShaderPass &&
+                       THREE.MaskPass && THREE.UnrealBloomPass && THREE.CopyShader &&
+                       THREE.LuminosityHighPassShader && THREE.GammaCorrectionShader;
+            if (!ok) { this.composer = null; return; }
+
+            const w = window.innerWidth, h = window.innerHeight;
+            this.composer = new THREE.EffectComposer(this.renderer);
+            this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.composer.setSize(w, h);
+
+            this.renderPass = new THREE.RenderPass(this.scene, this.mainCamera);
+            this.composer.addPass(this.renderPass);
+
+            // Bloom: nur sehr helle Bereiche (Sonne, Leuchtspuren, Mündungsfeuer, Fenster)
+            this.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.5, 0.8);
+            this.composer.addPass(this.bloomPass);
+
+            // Abschluss: linear → sRGB, damit die Farben dem Direkt-Rendering entsprechen
+            const gamma = new THREE.ShaderPass(THREE.GammaCorrectionShader);
+            gamma.renderToScreen = true;
+            this.composer.addPass(gamma);
+        } catch (e) {
+            this.composer = null;
+        }
+    }
+
+    _updateClouds(dt) {
+        if (!this.clouds) return;
+        for (const c of this.clouds) {
+            c.position.x += c.userData.speed * dt;
+            if (c.position.x > 1050) c.position.x = -1050;
+        }
+    }
+
+    // ── Gras-Feld (Instanced) ──────────────────────────────────────────────
+    _grassBladeTex() {
+        if (this._grassBlade) return this._grassBlade;
+        this._grassBlade = this._makeTexture(64, (ctx, s) => {
+            ctx.clearRect(0, 0, s, s);
+            const blades = 7;
+            for (let i = 0; i < blades; i++) {
+                const x = s * (0.12 + (i / blades) * 0.76) + (Math.random() - 0.5) * 4;
+                const bw = s * 0.05;
+                ctx.fillStyle = `hsl(${95 + Math.random() * 24},55%,${30 + Math.random() * 18}%)`;
+                ctx.beginPath();
+                ctx.moveTo(x - bw, s);
+                ctx.quadraticCurveTo(x - bw * 0.5, s * 0.4, x + (Math.random() - 0.5) * 8, s * 0.08);
+                ctx.quadraticCurveTo(x + bw * 0.5, s * 0.4, x + bw, s);
+                ctx.fill();
+            }
+        });
+        this._grassBlade.wrapS = this._grassBlade.wrapT = THREE.ClampToEdgeWrapping;
+        return this._grassBlade;
+    }
+
+    _grassTuftGeo() {
+        const g = new THREE.BufferGeometry();
+        const w = 0.55, h = 0.6;
+        const verts = [], uvs = [], norm = [];
+        const quads = [
+            [[-w/2, 0, 0], [w/2, 0, 0], [w/2, h, 0], [-w/2, h, 0]],
+            [[0, 0, -w/2], [0, 0, w/2], [0, h, w/2], [0, h, -w/2]],
+        ];
+        for (const q of quads) {
+            const [a, b, c, d] = q;
+            const tris = [[a,[0,0]],[b,[1,0]],[c,[1,1]],[a,[0,0]],[c,[1,1]],[d,[0,1]]];
+            for (const [p, uv] of tris) { verts.push(p[0], p[1], p[2]); uvs.push(uv[0], uv[1]); norm.push(0, 1, 0); }
+        }
+        g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        g.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+        return g;
+    }
+
+    addGrassField() {
+        const mat = new THREE.MeshStandardMaterial({
+            map: this._grassBladeTex(), alphaTest: 0.45, side: THREE.DoubleSide,
+            roughness: 1.0, metalness: 0.0,
+        });
+        const COUNT = 6500;
+        const mesh = new THREE.InstancedMesh(this._grassTuftGeo(), mat, COUNT);
+        mesh.frustumCulled = false;
+        const dummy = new THREE.Object3D();
+        const color = new THREE.Color();
+        let n = 0;
+        for (let i = 0; i < COUNT * 2 && n < COUNT; i++) {
+            const x = (Math.random() - 0.5) * 230;
+            const z = 95 - Math.random() * 285;
+            if (Math.abs(x) < 4.2 && z < 92) continue;          // Straße frei lassen
+            if (Math.abs(x) > 110 && Math.random() < 0.55) continue; // außen ausdünnen
+            dummy.position.set(x, 0, z);
+            dummy.rotation.y = Math.random() * Math.PI;
+            const sc = 0.6 + Math.random() * 1.1;
+            dummy.scale.set(sc, sc * (0.8 + Math.random() * 0.6), sc);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(n, dummy.matrix);
+            const t = 0.8 + Math.random() * 0.4;
+            color.setRGB(0.5 * t, 0.7 * t, 0.32 * t);
+            mesh.setColorAt(n, color);
+            n++;
+        }
+        mesh.count = n;
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        this.scene.add(mesh);
+    }
+
+    addBush(x, z, s = 1) {
+        const mats = [
+            new THREE.MeshStandardMaterial({ color: 0x2f5a26, roughness: 1 }),
+            new THREE.MeshStandardMaterial({ color: 0x3c6e30, roughness: 1 }),
+        ];
+        const group = new THREE.Group();
+        const blobs = 4 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < blobs; i++) {
+            const r = (0.5 + Math.random() * 0.5) * s;
+            const b = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), mats[Math.random() < 0.5 ? 0 : 1]);
+            b.position.set((Math.random() - 0.5) * 0.9 * s, r * 0.7 + Math.random() * 0.2, (Math.random() - 0.5) * 0.9 * s);
+            b.scale.y = 0.8;
+            b.castShadow = true;
+            group.add(b);
+        }
+        group.position.set(x, 0, z);
+        this.scene.add(group);
+    }
+
+    _woodTex() {
+        if (this._wood) return this._wood;
+        this._wood = this._makeTexture(128, (ctx, s) => {
+            ctx.fillStyle = '#6b4a2a';
+            ctx.fillRect(0, 0, s, s);
+            for (let i = 0; i < 60; i++) {
+                ctx.strokeStyle = `rgba(${60 + Math.random() * 50 | 0},${40 + Math.random() * 30 | 0},20,0.25)`;
+                ctx.lineWidth = 0.5 + Math.random();
+                const y = Math.random() * s;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.bezierCurveTo(s * 0.3, y + (Math.random() - 0.5) * 6, s * 0.6, y + (Math.random() - 0.5) * 6, s, y);
+                ctx.stroke();
+            }
+            ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+            ctx.lineWidth = 2;
+            for (let p = 1; p < 4; p++) {
+                const x = s / 4 * p;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, s);
+                ctx.stroke();
+            }
+        });
+        return this._wood;
+    }
+
+    addCrate(x, z, s = 1) {
+        const mat = new THREE.MeshStandardMaterial({ map: this._woodTex(), roughness: 0.85, metalness: 0.02 });
+        const frameMat = new THREE.MeshStandardMaterial({ color: 0x4a3318, roughness: 0.9 });
+        const sz = 1.1 * s;
+        const box = new THREE.Mesh(new THREE.BoxGeometry(sz, sz, sz), mat);
+        box.position.set(x, sz / 2, z);
+        box.rotation.y = Math.random() * 0.5;
+        box.castShadow = true;
+        box.receiveShadow = true;
+        this.scene.add(box);
+        for (const ex of [-1, 1]) for (const ez of [-1, 1]) {
+            const edge = new THREE.Mesh(new THREE.BoxGeometry(0.09, sz * 1.02, 0.09), frameMat);
+            edge.position.set(x + ex * sz / 2, sz / 2, z + ez * sz / 2);
+            edge.rotation.y = box.rotation.y;
+            this.scene.add(edge);
+        }
+    }
+
+    addBarrel(x, z, colorHex = 0x8a3320) {
+        const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.5, metalness: 0.5 });
+        const rimMat  = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6, metalness: 0.4 });
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.15, 16), bodyMat);
+        body.position.set(x, 0.575, z);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        this.scene.add(body);
+        for (const ry of [0.18, 0.575, 0.97]) {
+            const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.08, 16), rimMat);
+            rim.position.set(x, ry, z);
+            this.scene.add(rim);
+        }
+    }
+
+    addFence(x0, z0, x1, z1, posts = 10) {
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x5a4326, roughness: 0.9 });
+        for (let i = 0; i <= posts; i++) {
+            const t = i / posts;
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.2, 0.12), woodMat);
+            post.position.set(x0 + (x1 - x0) * t, 0.6, z0 + (z1 - z0) * t);
+            post.castShadow = true;
+            this.scene.add(post);
+        }
+        const len = Math.hypot(x1 - x0, z1 - z0);
+        const ang = Math.atan2(z1 - z0, x1 - x0);
+        for (const ry of [0.45, 0.95]) {
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.1, 0.06), woodMat);
+            rail.position.set((x0 + x1) / 2, ry, (z0 + z1) / 2);
+            rail.rotation.y = -ang;
+            this.scene.add(rail);
+        }
+    }
+
+    addMountains() {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a68, roughness: 1, metalness: 0 });
+        const snow = new THREE.MeshStandardMaterial({ color: 0xdde6ee, roughness: 1 });
+        const defs = [
+            [-700, -1180, 380, 240], [-250, -1320, 470, 310], [320, -1280, 420, 280],
+            [780, -1230, 440, 280], [-1050, -1160, 360, 220], [80, -1360, 520, 340],
+        ];
+        for (const [mx, mz, mr, mh] of defs) {
+            const m = new THREE.Mesh(new THREE.ConeGeometry(mr, mh, 7, 1), mat);
+            m.position.set(mx, mh / 2 - 30, mz);
+            m.rotation.y = Math.random() * Math.PI;
+            this.scene.add(m);
+            const cap = new THREE.Mesh(new THREE.ConeGeometry(mr * 0.34, mh * 0.3, 7, 1), snow);
+            cap.position.set(mx, mh - mh * 0.15 - 30, mz);
+            cap.rotation.y = m.rotation.y;
+            this.scene.add(cap);
+        }
+    }
+
+    addRoadsideProps() {
+        // Kisten-Stapel
+        this.addCrate(8, 70, 1.0);
+        this.addCrate(8.8, 71.1, 0.8);
+        this.addCrate(7.6, 71.4, 0.7);
+        this.addCrate(-9, -40, 1.0);
+        this.addCrate(-8.4, -41, 0.8);
+        this.addCrate(44, -96, 1.0);
+        this.addCrate(-52, -210, 0.9);
+        // Fässer
+        this.addBarrel(-7, 72, 0x8a3320);
+        this.addBarrel(-6.2, 72.6, 0x2a5a8a);
+        this.addBarrel(11, -38, 0x3a6a32);
+        this.addBarrel(52, -188, 0x8a7a20);
+        this.addBarrel(-44, -98, 0x8a3320);
+        // Büsche
+        const bushSpots = [[-12,40],[14,30],[-20,-20],[24,-60],[-28,-130],[30,-150],[-40,-240],[42,-260],[-16,55],[18,64],[-34,-300],[36,-330]];
+        for (const [bx, bz] of bushSpots) this.addBush(bx, bz, 0.8 + Math.random() * 0.7);
+        // Zäune entlang der Straße
+        this.addFence(-3.4, 60, -3.4, 12, 8);
+        this.addFence(3.4, 60, 3.4, 12, 8);
+        this.addFence(-3.4, -30, -3.4, -120, 12);
     }
 
     spawnTargets(missionDef) {
@@ -1231,10 +1507,19 @@ class SniperGame {
             this.update(dt);
         }
 
-        if (this.bulletCamActive) {
-            this.renderer.render(this.scene, this.bulletCamObj);
+        const cam = this.bulletCamActive ? this.bulletCamObj : this.mainCamera;
+        if (this.composer) {
+            try {
+                this.renderPass.camera = cam;
+                this.composer.render();
+            } catch (e) {
+                // Bei jeglichem Post-FX-Fehler dauerhaft auf Direkt-Rendering zurückfallen
+                this.composer = null;
+                this.renderer.setRenderTarget(null);
+                this.renderer.render(this.scene, cam);
+            }
         } else {
-            this.renderer.render(this.scene, this.mainCamera);
+            this.renderer.render(this.scene, cam);
         }
     }
 
@@ -1248,6 +1533,7 @@ class SniperGame {
         this.updateMuzzleFlash(dt);
         this._updateFadingTracers(dt);
         this._updateDust(dt);
+        this._updateClouds(dt);
         if (this.bulletCamActive) {
             this.updateBulletCam(dt);
         }
@@ -1772,6 +2058,8 @@ class SniperGame {
         this.mainCamera.updateProjectionMatrix();
         this.bulletCamObj.aspect = window.innerWidth / window.innerHeight;
         this.bulletCamObj.updateProjectionMatrix();
+        if (this.composer) this.composer.setSize(window.innerWidth, window.innerHeight);
+        if (this.bloomPass) this.bloomPass.setSize(window.innerWidth, window.innerHeight);
     }
 }
 
