@@ -560,6 +560,15 @@ class UIManager {
         });
     }
 
+    showHitMarker(isKill) {
+        const hm = document.getElementById('hit-marker');
+        if (!hm) return;
+        hm.classList.remove('show', 'kill');
+        void hm.offsetWidth;   // Animation neu starten
+        hm.classList.add('show');
+        if (isKill) hm.classList.add('kill');
+    }
+
     updateWind(wind) {
         const speed = Math.round(wind.length() * 10) / 10;
         const angle = Math.atan2(wind.y, wind.x) * 180 / Math.PI;

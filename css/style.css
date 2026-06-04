@@ -180,6 +180,33 @@ body {
     box-shadow: 0 0 3px rgba(0,0,0,0.5);
 }
 
+/* Hit marker — vier diagonale Striche, kurz aufblitzend */
+#hit-marker {
+    position: fixed;
+    left: 50%; top: 50%;
+    width: 0; height: 0;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 60;
+}
+#hit-marker.show { animation: hitPop 0.34s ease-out; }
+#hit-marker i {
+    position: absolute;
+    width: 12px; height: 2px;
+    background: #f4f4f4;
+    box-shadow: 0 0 4px rgba(0,0,0,0.85);
+}
+#hit-marker i:nth-child(1) { transform: translate(-19px,-19px) rotate(45deg); }
+#hit-marker i:nth-child(2) { transform: translate(7px,-19px)  rotate(-45deg); }
+#hit-marker i:nth-child(3) { transform: translate(-19px,17px) rotate(-45deg); }
+#hit-marker i:nth-child(4) { transform: translate(7px,17px)   rotate(45deg); }
+#hit-marker.kill i { background: #ff3838; box-shadow: 0 0 6px rgba(255,40,40,0.8); }
+@keyframes hitPop {
+    0%   { opacity: 0; }
+    15%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
 /* Mil-dot center */
 .scope-lens {
     position: absolute;
