@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sniper Elite 3D</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ── Loading ─────────────────────────── -->
+<div id="loading-screen">
+    <div class="loading-content">
+        <h2>SNIPER ELITE 3D</h2>
+        <div style="color:#555;letter-spacing:0.3em;font-size:0.75rem;margin-bottom:20px;">WIRD GELADEN</div>
+        <div class="loading-bar"><div id="loading-progress"></div></div>
+    </div>
+</div>
+
+<!-- ── Main Menu ───────────────────────── -->
+<div id="main-menu" class="menu hidden">
+    <div class="menu-content">
+        <h1 class="game-title">SNIPER ELITE 3D</h1>
+        <div class="game-subtitle">Taktisch · Präzise · Lautlos</div>
+        <button id="btn-missions" class="menu-btn">MISSIONEN</button>
+        <button id="btn-weapons"  class="menu-btn">WAFFENKAMMER</button>
+        <button id="btn-settings" class="menu-btn secondary">EINSTELLUNGEN</button>
+        <div style="margin-top:40px;color:#333;font-size:0.68rem;letter-spacing:0.2em">
+            WASD: Bewegen · Rechtsklick: Zielen · Linksklick: Schießen<br>
+            R: Nachladen · SHIFT: Atem anhalten · ESC: Pause
+        </div>
+    </div>
+</div>
+
+<!-- ── Mission Selection ───────────────── -->
+<div id="mission-select" class="menu hidden">
+    <div class="menu-content">
+        <h2 style="letter-spacing:0.3em;color:#c8a000;margin-bottom:20px;">MISSIONEN</h2>
+        <div id="mission-list"></div>
+        <button id="btn-back-missions" class="menu-btn secondary" style="margin-top:16px;">ZURÜCK</button>
+    </div>
+</div>
+
+<!-- ── Weapon Customization ────────────── -->
+<div id="weapon-menu" class="menu hidden">
+    <div class="menu-content weapon-menu-content">
+        <h2 style="letter-spacing:0.3em;color:#c8a000;margin-bottom:16px;">WAFFENKAMMER</h2>
+        <div class="weapon-selection">
+            <div id="weapon-list"></div>
+            <div id="weapon-preview">
+                <div id="weapon-stats">
+                    <div class="stat-bar">
+                        <span>Schaden</span>
+                        <div class="bar"><div id="stat-damage" class="bar-fill" style="width:0%"></div></div>
+                    </div>
+                    <div class="stat-bar">
+                        <span>Reichweite</span>
+                        <div class="bar"><div id="stat-range" class="bar-fill" style="width:0%"></div></div>
+                    </div>
+                    <div class="stat-bar">
+                        <span>Stabilität</span>
+                        <div class="bar"><div id="stat-stability" class="bar-fill" style="width:0%"></div></div>
+                    </div>
+                    <div class="stat-bar">
+                        <span>Feuerrate</span>
+                        <div class="bar"><div id="stat-firerate" class="bar-fill" style="width:0%"></div></div>
+                    </div>
+                </div>
+                <div id="attachments">
+                    <h3>Aufsätze</h3>
+                    <div class="attachment-row" id="scope-options"></div>
+                    <div class="attachment-row" id="barrel-options"></div>
+                    <div class="attachment-row" id="stock-options"></div>
+                    <div class="attachment-row" id="underbarrel-options"></div>
+                </div>
+                <div id="skins">
+                    <h3>Skins</h3>
+                    <div id="skin-options"></div>
+                </div>
+            </div>
+        </div>
+        <button id="btn-back-weapons" class="menu-btn secondary" style="margin-top:4px;">ZURÜCK</button>
+    </div>
+</div>
+
+<!-- ── HUD ─────────────────────────────── -->
+<div id="hud" class="hidden">
+
+    <!-- Scope overlay — black radial gradient + reticle, main canvas shows through -->
+    <div id="scope-overlay" class="hidden">
+        <div class="scope-reticle"></div>
+        <div class="scope-lens"></div>
+    </div>
+
+    <!-- Crosshair -->
+    <div id="crosshair">
+        <div class="ch-top"></div>
+        <div class="ch-right"></div>
+        <div class="ch-bottom"></div>
+        <div class="ch-left"></div>
+    </div>
+
+    <!-- Mission info -->
+    <div id="mission-hud">
+        <div id="mission-name">MISSION</div>
+        <div id="mission-objective">Ziel</div>
+        <div id="mission-progress"></div>
+    </div>
+
+    <!-- Weapon info -->
+    <div id="weapon-hud">
+        <div id="reload-indicator" class="hidden">NACHLADEN...</div>
+        <div id="ammo-display">5 / 5</div>
+        <div id="weapon-name-hud">REMINGTON M700</div>
+    </div>
+
+    <!-- Wind -->
+    <div id="wind-indicator">
+        <span>WIND: </span><span id="wind-value">→ 0 m/s</span>
+    </div>
+
+    <!-- Breath -->
+    <div id="breath-indicator">
+        <div id="breath-bar"><div id="breath-fill"></div></div>
+        <span>ATEM</span>
+    </div>
+
+    <!-- Bullet cam overlay -->
+    <div id="bullet-cam-overlay" class="hidden">
+        <div id="bullet-cam-info">● BULLET CAM</div>
+    </div>
+
+    <!-- Kill notification -->
+    <div id="kill-notification" class="hidden">
+        <div id="kill-text"></div>
+    </div>
+
+    <!-- Controls hint while playing -->
+    <div id="controls-hint">ESC: Pause · R: Nachladen · Shift: Atem halten · Rechtsklick: Zielen</div>
+
+</div>
+
+<!-- ── Game Canvas ─────────────────────── -->
+<canvas id="game-canvas"></canvas>
+
+<!-- ── Pause Menu ──────────────────────── -->
+<div id="pause-menu" class="menu hidden">
+    <div class="menu-content">
+        <h2 style="letter-spacing:0.3em;margin-bottom:24px;">PAUSE</h2>
+        <button id="btn-resume"    class="menu-btn">WEITER SPIELEN</button>
+        <button id="btn-customize" class="menu-btn">WAFFE ANPASSEN</button>
+        <button id="btn-quit"      class="menu-btn secondary">HAUPTMENÜ</button>
+    </div>
+</div>
+
+<!-- ── Mission Complete/Failed ─────────── -->
+<div id="mission-complete" class="hidden">
+    <div class="complete-content">
+        <h2 id="mission-result-title"></h2>
+        <div id="mission-result-stats"></div>
+        <button id="btn-retry"              class="menu-btn">WIEDERHOLEN</button>
+        <button id="btn-next-mission"       class="menu-btn">MISSIONSAUSWAHL</button>
+        <button id="btn-main-menu-complete" class="menu-btn secondary">HAUPTMENÜ</button>
+    </div>
+</div>
+
+<!-- ── Scripts ─────────────────────────── -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/weapons.js"></script>
+<script src="js/missions.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,534 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#game-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+}
+
+/* ── Menus ─────────────────────────────────── */
+.menu {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, rgba(0,0,0,0.93) 0%, rgba(5,12,5,0.97) 100%);
+}
+
+.menu-content {
+    position: relative;
+    text-align: center;
+    max-width: 900px;
+    width: 90%;
+}
+
+.hidden { display: none !important; }
+
+/* ── Title ─────────────────────────────────── */
+.game-title {
+    font-size: clamp(2rem, 6vw, 4rem);
+    letter-spacing: 0.25em;
+    color: #c8a000;
+    text-shadow: 0 0 40px rgba(200,160,0,0.45), 0 0 80px rgba(200,160,0,0.2);
+    margin-bottom: 0.4em;
+    font-weight: 900;
+}
+
+.game-subtitle {
+    color: #555;
+    letter-spacing: 0.5em;
+    font-size: 0.75rem;
+    margin-bottom: 3rem;
+    text-transform: uppercase;
+}
+
+/* ── Buttons ───────────────────────────────── */
+.menu-btn {
+    display: block;
+    width: 280px;
+    margin: 0.75rem auto;
+    padding: 0.9rem 2rem;
+    background: transparent;
+    border: 1px solid #c8a000;
+    color: #c8a000;
+    font-family: 'Courier New', monospace;
+    font-size: 0.95rem;
+    letter-spacing: 0.25em;
+    cursor: pointer;
+    transition: all 0.18s;
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(200,160,0,0.15), transparent);
+    transition: left 0.4s;
+}
+.menu-btn:hover::before { left: 100%; }
+.menu-btn:hover {
+    background: rgba(200,160,0,0.12);
+    box-shadow: 0 0 18px rgba(200,160,0,0.35);
+}
+
+.menu-btn.secondary {
+    border-color: #444;
+    color: #666;
+}
+.menu-btn.secondary:hover {
+    background: rgba(80,80,80,0.15);
+    border-color: #888;
+    color: #aaa;
+    box-shadow: none;
+}
+
+/* ── HUD ───────────────────────────────────── */
+#hud {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 50;
+}
+
+/* Scope — rendered as a circular window in the main canvas */
+#scope-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    /* Black everywhere except a 22vmin-radius circle at center */
+    background: radial-gradient(
+        circle 22vmin at 50% 50%,
+        transparent 99%,
+        rgba(0,0,0,0.98) 100%
+    );
+    z-index: 55;
+    pointer-events: none;
+}
+
+/* Scope lens border ring */
+#scope-overlay::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 44.6vmin; height: 44.6vmin;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 3px solid rgba(80,80,80,0.8);
+    box-shadow:
+        inset 0 0 30px rgba(0,0,0,0.6),
+        0 0 0 4px rgba(30,30,30,0.9),
+        0 0 0 8px rgba(10,10,10,0.98);
+    pointer-events: none;
+}
+
+/* Scope reticle — crosshair lines */
+.scope-reticle {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 44vmin; height: 44vmin;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.scope-reticle::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    width: 1px; height: 100%;
+    background: rgba(200,220,200,0.7);
+    transform: translateX(-50%);
+    box-shadow: 0 0 3px rgba(0,0,0,0.5);
+}
+
+.scope-reticle::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 50%;
+    width: 100%; height: 1px;
+    background: rgba(200,220,200,0.7);
+    transform: translateY(-50%);
+    box-shadow: 0 0 3px rgba(0,0,0,0.5);
+}
+
+/* Mil-dot center */
+.scope-lens {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(200,220,200,0.5);
+    pointer-events: none;
+}
+
+.scope-edge { display: none; }
+#scope-canvas { display: none; }
+
+/* Crosshair */
+#crosshair {
+    position: fixed;
+    top: 50%; left: 50%;
+    width: 0; height: 0;
+}
+
+#crosshair div { position: absolute; background: rgba(255,255,255,0.82); }
+.ch-top    { width: 1px; height: 9px;  top: -13px; left: 0; }
+.ch-bottom { width: 1px; height: 9px;  top: 4px;   left: 0; }
+.ch-left   { width: 9px; height: 1px;  top: 0;     left: -13px; }
+.ch-right  { width: 9px; height: 1px;  top: 0;     left: 4px; }
+
+/* Mission HUD */
+#mission-hud {
+    position: fixed;
+    top: 18px; left: 18px;
+    background: rgba(0,0,0,0.65);
+    border-left: 2px solid #c8a000;
+    padding: 10px 14px;
+    backdrop-filter: blur(4px);
+}
+
+#mission-name     { color: #c8a000; font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase; }
+#mission-objective{ color: #fff;    font-size: 0.92rem; margin: 3px 0; }
+#mission-progress { color: #888;    font-size: 0.78rem; }
+
+/* Weapon HUD */
+#weapon-hud {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    text-align: right;
+}
+
+#ammo-display     { font-size: 2.2rem; color: #fff; font-weight: bold; line-height: 1; }
+#weapon-name-hud  { font-size: 0.8rem; color: #c8a000; letter-spacing: 0.18em; text-transform: uppercase; margin-top: 2px; }
+
+#reload-indicator {
+    color: #ff5555;
+    font-size: 0.85rem;
+    letter-spacing: 0.15em;
+    margin-top: 4px;
+    animation: blink 0.45s infinite;
+}
+
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.1; } }
+
+/* Wind */
+#wind-indicator {
+    position: fixed;
+    bottom: 28px; left: 28px;
+    color: #88bbff;
+    font-size: 0.82rem;
+    background: rgba(0,0,0,0.5);
+    padding: 6px 10px;
+    border-left: 2px solid #446688;
+}
+
+/* Breath */
+#breath-indicator {
+    position: fixed;
+    bottom: 58px; right: 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.68rem;
+    color: #7799cc;
+}
+
+#breath-bar {
+    width: 70px; height: 3px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(100,150,220,0.4);
+}
+
+#breath-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4466aa, #88aaff);
+    transition: width 0.15s;
+}
+
+/* Bullet cam overlay */
+#bullet-cam-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    border: 2px solid rgba(255,180,0,0.25);
+}
+
+#bullet-cam-info {
+    position: absolute;
+    top: 16px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.75);
+    color: #ffcc00;
+    padding: 3px 14px;
+    font-size: 0.7rem;
+    letter-spacing: 0.35em;
+    border: 1px solid rgba(255,180,0,0.3);
+}
+
+/* Kill notification */
+#kill-notification {
+    position: fixed;
+    top: 42%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    pointer-events: none;
+}
+
+#kill-text { font-weight: bold; letter-spacing: 0.08em; }
+
+/* Loading */
+#loading-screen {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #060608;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 500;
+}
+
+.loading-content { text-align: center; }
+
+.loading-content h2 {
+    color: #c8a000;
+    letter-spacing: 0.4em;
+    margin-bottom: 24px;
+    font-size: 1.2rem;
+}
+
+.loading-bar {
+    width: 260px;
+    height: 3px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(200,160,0,0.25);
+    margin: 0 auto;
+}
+
+#loading-progress {
+    height: 100%;
+    background: #c8a000;
+    width: 0%;
+    transition: width 0.5s ease-out;
+}
+
+/* Mission complete */
+#mission-complete {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 150;
+}
+
+.complete-content { text-align: center; }
+
+.complete-content h2 {
+    font-size: clamp(1.5rem, 4vw, 2.4rem);
+    letter-spacing: 0.25em;
+    margin-bottom: 16px;
+}
+
+/* Pause menu */
+#pause-menu { background: rgba(0,0,0,0.88); }
+
+/* Weapon customization */
+.weapon-menu-content { max-width: 1050px; width: 95%; }
+
+.weapon-selection {
+    display: flex;
+    gap: 28px;
+    margin: 20px 0;
+    text-align: left;
+}
+
+#weapon-list { width: 190px; flex-shrink: 0; }
+
+.weapon-item {
+    padding: 11px 14px;
+    border: 1px solid #2a2a2a;
+    margin-bottom: 6px;
+    cursor: pointer;
+    background: rgba(0,0,0,0.5);
+    transition: all 0.18s;
+    color: #bbb;
+    font-size: 0.88rem;
+    letter-spacing: 0.05em;
+}
+
+.weapon-item:hover, .weapon-item.active {
+    border-color: #c8a000;
+    color: #c8a000;
+    background: rgba(200,160,0,0.08);
+}
+
+#weapon-preview { flex: 1; }
+
+#weapon-stats { margin-bottom: 16px; }
+
+.stat-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 7px;
+}
+
+.stat-bar span { width: 85px; font-size: 0.75rem; color: #777; }
+
+.bar {
+    flex: 1; height: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #8a7000, #c8a000);
+    border-radius: 2px;
+    transition: width 0.28s ease-out;
+}
+
+#attachments { margin-top: 16px; }
+
+#attachments h3, #skins h3 {
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    color: #555;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #222;
+    text-transform: uppercase;
+}
+
+.attachment-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.attachment-btn {
+    padding: 5px 11px;
+    border: 1px solid #333;
+    background: rgba(0,0,0,0.45);
+    color: #999;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+}
+
+.attachment-btn:hover {
+    border-color: #666;
+    color: #ccc;
+}
+
+.attachment-btn.active {
+    border-color: #c8a000;
+    color: #c8a000;
+    background: rgba(200,160,0,0.12);
+}
+
+#skins { margin-top: 16px; }
+
+#skin-options { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.skin-btn {
+    width: 46px; height: 46px;
+    border: 2px solid #333;
+    cursor: pointer;
+    transition: all 0.18s;
+    border-radius: 3px;
+}
+
+.skin-btn:hover { border-color: #888; transform: scale(1.08); }
+
+.skin-btn.active {
+    border-color: #c8a000;
+    box-shadow: 0 0 10px rgba(200,160,0,0.5);
+    transform: scale(1.08);
+}
+
+/* Mission cards */
+#mission-list { max-height: 65vh; overflow-y: auto; }
+#mission-list::-webkit-scrollbar { width: 4px; }
+#mission-list::-webkit-scrollbar-thumb { background: #333; }
+
+.mission-card {
+    padding: 13px 18px;
+    border: 1px solid #222;
+    margin-bottom: 8px;
+    cursor: pointer;
+    text-align: left;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: all 0.18s;
+}
+
+.mission-card:hover {
+    border-color: #c8a000;
+    background: rgba(200,160,0,0.08);
+}
+
+.mission-card.locked { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+.mission-difficulty { font-size: 0.72rem; color: #c8a000; letter-spacing: 0.05em; margin-bottom: 2px; }
+.mission-card-name  { font-size: 1.05rem; color: #e0e0e0; }
+.mission-card-desc  { font-size: 0.8rem; color: #777; margin-top: 2px; }
+.mission-reward     { margin-left: auto; color: #c8a000; font-size: 0.88rem; white-space: nowrap; }
+
+/* Impact flash */
+.impact-flash {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(255,210,0,0.12);
+    pointer-events: none;
+    z-index: 90;
+    animation: flash-anim 0.35s ease-out forwards;
+}
+
+@keyframes flash-anim { from { opacity: 1; } to { opacity: 0; } }
+
+/* Controls hint */
+#controls-hint {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #444;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    pointer-events: none;
+    text-align: center;
+}
