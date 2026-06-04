@@ -22,9 +22,10 @@
     <div class="menu-content">
         <h1 class="game-title">SNIPER ELITE 3D</h1>
         <div class="game-subtitle">Taktisch · Präzise · Lautlos</div>
-        <button id="btn-missions" class="menu-btn">MISSIONEN</button>
-        <button id="btn-weapons"  class="menu-btn">WAFFENKAMMER</button>
-        <button id="btn-settings" class="menu-btn secondary">EINSTELLUNGEN</button>
+        <button id="btn-missions"  class="menu-btn">MISSIONEN</button>
+        <button id="btn-weapons"   class="menu-btn">WAFFENKAMMER</button>
+        <button id="btn-stats"     class="menu-btn">STATISTIKEN</button>
+        <button id="btn-settings"  class="menu-btn secondary">EINSTELLUNGEN</button>
         <div style="margin-top:40px;color:#333;font-size:0.68rem;letter-spacing:0.2em">
             WASD: Bewegen · Rechtsklick: Zielen · Linksklick: Schießen<br>
             R: Nachladen · SHIFT: Atem anhalten · ESC: Pause
@@ -142,6 +143,49 @@
 
 <!-- ── Game Canvas ─────────────────────── -->
 <canvas id="game-canvas"></canvas>
+
+<!-- ── Stats Screen ───────────────────── -->
+<div id="stats-screen" class="menu hidden">
+    <div class="menu-content stats-content">
+        <h2 style="letter-spacing:0.3em;color:#c8a000;margin-bottom:6px;">STATISTIKEN</h2>
+        <div id="stats-session-label" style="color:#444;font-size:0.72rem;letter-spacing:0.2em;margin-bottom:20px;">SESSION KILL-LOG</div>
+
+        <!-- Summary bar -->
+        <div id="stats-summary"></div>
+
+        <!-- Distribution chart -->
+        <div id="stats-chart-wrap">
+            <div style="color:#555;font-size:0.68rem;letter-spacing:0.2em;margin-bottom:6px;">ENTFERNUNG VERTEILUNG</div>
+            <div id="stats-chart"></div>
+        </div>
+
+        <!-- Kill table -->
+        <div id="stats-table-wrap">
+            <table id="stats-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>MISSION</th>
+                        <th>ENTFERNUNG</th>
+                        <th>ZEIT</th>
+                        <th>ZONE</th>
+                        <th>WAFFE</th>
+                        <th>PUNKTE</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-tbody"></tbody>
+            </table>
+        </div>
+
+        <!-- Best mission times -->
+        <div id="stats-besttimes-wrap">
+            <div style="color:#555;font-size:0.68rem;letter-spacing:0.2em;margin-bottom:8px;border-top:1px solid #222;padding-top:14px;">MISSIONS-BESTZEITEN</div>
+            <div id="stats-besttimes"></div>
+        </div>
+
+        <button id="btn-stats-close" class="menu-btn secondary" style="margin-top:16px;">ZURÜCK</button>
+    </div>
+</div>
 
 <!-- ── Pause Menu ──────────────────────── -->
 <div id="pause-menu" class="menu hidden">

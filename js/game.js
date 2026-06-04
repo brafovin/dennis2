@@ -62,6 +62,8 @@ class SniperGame {
 
         this.score = 0;
         this.totalScore = 0;
+        this.killLog = [];
+        this.missionStartTime = 0;
     }
 
     init() {
@@ -1004,6 +1006,7 @@ class SniperGame {
     onHit(bullet, target, zone, hitPoint) {
         const isHeadshot = zone === 'head';
         const dist = Math.round(bullet.pos.distanceTo(this.player.pos));
+        const elapsedSec = Math.round((Date.now() - this.missionStartTime) / 100) / 10;
 
         // Start bullet cam
         this.startBulletCam(bullet, hitPoint, zone);
@@ -1022,6 +1025,18 @@ class SniperGame {
         if (dist > 800) pts += 400;
         if (bullet.silent) pts += 100;
         this.score += pts;
+
+        // Kill log entry
+        this.killLog.push({
+            n:       this.killLog.length + 1,
+            dist,
+            time:    elapsedSec,
+            zone:    isHeadshot ? 'KOPF' : zone === 'leg' ? 'BEIN' : 'KÖRPER',
+            weapon:  CONFIG.WEAPONS[this.weaponId].name,
+            mission: this.mission ? this.mission.name : '—',
+            silent:  bullet.silent,
+            pts,
+        });
 
         // Kill notification
         uiManager.showKillNotification(isHeadshot, dist, pts);
@@ -1160,6 +1175,20 @@ class SniperGame {
         }
         this.totalScore += this.score;
 
+        // Persist best mission time
+        const elapsed = Math.round((Date.now() - this.missionStartTime) / 100) / 10;
+        try {
+            const best = JSON.parse(localStorage.getItem('sniperBest') || '{}');
+            if (!best[this.mission.id] || elapsed < best[this.mission.id].time) {
+                best[this.mission.id] = {
+                    time:  elapsed,
+                    kills: this.killCount,
+                    score: this.score,
+                };
+                localStorage.setItem('sniperBest', JSON.stringify(best));
+            }
+        } catch(_) {}
+
         setTimeout(() => {
             uiManager.showMissionComplete(this.mission, this.score, this.killCount, this.headshotStreak);
         }, CONFIG.GAME.BULLET_CAM_DURATION * 0.5);
@@ -1187,6 +1216,8 @@ class SniperGame {
         this.score = 0;
         this.missionTimer = mDef.timeLimit || 9999;
         this.timedKillTimer = 0;
+        this.killLog = [];
+        this.missionStartTime = Date.now();
 
         // Reset player position
         this.player.pos.set(0, 6, 80);

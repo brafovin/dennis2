@@ -25,6 +25,17 @@ class UIManager {
     }
 
     bindMenuButtons() {
+        document.getElementById('btn-stats').addEventListener('click', () => {
+            document.getElementById('main-menu').classList.add('hidden');
+            this.showStatsScreen();
+            document.getElementById('stats-screen').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-stats-close').addEventListener('click', () => {
+            document.getElementById('stats-screen').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+        });
+
         document.getElementById('btn-missions').addEventListener('click', () => {
             document.getElementById('main-menu').classList.add('hidden');
             this.populateMissionList();
@@ -233,6 +244,121 @@ class UIManager {
             });
             container.appendChild(btn);
         }
+    }
+
+    showStatsScreen() {
+        const kills = game.killLog || [];
+
+        // ── Summary chips ─────────────────────────────────────────────────
+        const totalKills = kills.length;
+        const headshots  = kills.filter(k => k.zone === 'KOPF').length;
+        const bestDist   = kills.length ? Math.max(...kills.map(k => k.dist)) : 0;
+        const bestTime   = kills.length ? Math.min(...kills.map(k => k.time)) : 0;
+        const avgDist    = kills.length ? kills.reduce((s, k) => s + k.dist, 0) / kills.length : 0;
+        const avgTime    = kills.length ? kills.reduce((s, k) => s + k.time, 0) / kills.length : 0;
+
+        document.getElementById('stats-summary').innerHTML = [
+            { val: totalKills,                    lbl: 'Kills Session' },
+            { val: headshots,                     lbl: 'Kopfschüsse' },
+            { val: bestDist  ? bestDist + 'm'  : '—', lbl: 'Weitester Kill' },
+            { val: bestTime  ? bestTime + 's'  : '—', lbl: 'Schnellster Kill' },
+            { val: avgDist   ? Math.round(avgDist) + 'm' : '—', lbl: 'Ø Entfernung' },
+            { val: avgTime   ? avgTime.toFixed(1) + 's' : '—', lbl: 'Ø Zeit bis Kill' },
+        ].map(c => `<div class="stat-chip">
+            <span class="chip-val">${c.val}</span>
+            <span class="chip-lbl">${c.lbl}</span>
+        </div>`).join('');
+
+        // ── Distribution bar chart ────────────────────────────────────────
+        const ranges = [
+            { lbl: '0–100m',    min: 0,   max: 100  },
+            { lbl: '100–300m',  min: 100, max: 300  },
+            { lbl: '300–600m',  min: 300, max: 600  },
+            { lbl: '600–900m',  min: 600, max: 900  },
+            { lbl: '900m+',     min: 900, max: 99999 },
+        ];
+        const buckets = ranges.map(r => ({
+            ...r,
+            count: kills.filter(k => k.dist >= r.min && k.dist < r.max).length,
+        }));
+        const maxCount = Math.max(1, ...buckets.map(b => b.count));
+
+        document.getElementById('stats-chart').innerHTML = buckets.map(b => `
+            <div class="chart-row">
+                <div class="chart-label">${b.lbl}</div>
+                <div class="chart-bar-track">
+                    <div class="chart-bar-fill" style="width:${Math.round(b.count / maxCount * 100)}%"></div>
+                </div>
+                <div class="chart-count">${b.count}</div>
+            </div>
+        `).join('');
+
+        // ── Kill table with average marker ────────────────────────────────
+        const sorted = [...kills].sort((a, b) => b.dist - a.dist);   // longest first
+        let avgInserted = false;
+        let rows = '';
+
+        if (!sorted.length) {
+            rows = `<tr><td colspan="7" style="text-align:center;color:#333;padding:24px;">
+                Noch keine Kills in dieser Session
+            </td></tr>`;
+        } else {
+            sorted.forEach((k, i) => {
+                // Insert average marker before first kill that is BELOW average distance
+                if (!avgInserted && k.dist < avgDist) {
+                    avgInserted = true;
+                    rows += `<tr class="row-avg">
+                        <td colspan="3">── Ø DURCHSCHNITT: ${Math.round(avgDist)}m</td>
+                        <td>${avgTime.toFixed(1)}s</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>—</td>
+                    </tr>`;
+                }
+
+                const cls = [
+                    k.dist >= avgDist    ? 'row-above' : 'row-below',
+                    k.zone === 'KOPF'    ? 'row-head'  : '',
+                    k.silent             ? 'row-silent' : '',
+                ].filter(Boolean).join(' ');
+
+                rows += `<tr class="${cls}">
+                    <td>${k.n}</td>
+                    <td style="color:#666;font-size:0.73rem">${k.mission}</td>
+                    <td><strong>${k.dist}m</strong></td>
+                    <td>${k.time}s</td>
+                    <td>${k.zone}</td>
+                    <td style="font-size:0.73rem">${k.weapon}</td>
+                    <td style="color:#c8a000">${k.pts}</td>
+                </tr>`;
+            });
+
+            // If every kill was above average (avg marker not yet inserted)
+            if (!avgInserted) {
+                rows += `<tr class="row-avg">
+                    <td colspan="3">── Ø DURCHSCHNITT: ${Math.round(avgDist)}m</td>
+                    <td>${avgTime.toFixed(1)}s</td>
+                    <td>—</td><td>—</td><td>—</td>
+                </tr>`;
+            }
+        }
+        document.getElementById('stats-tbody').innerHTML = rows;
+
+        // ── Best mission times (localStorage) ─────────────────────────────
+        let best = {};
+        try { best = JSON.parse(localStorage.getItem('sniperBest') || '{}'); } catch(_) {}
+
+        document.getElementById('stats-besttimes').innerHTML = MISSIONS.map(m => {
+            const rec = best[m.id];
+            return `<div class="best-card">
+                <div class="best-card-name">${m.name}</div>
+                ${rec
+                    ? `<div class="best-card-time">${rec.time}s</div>
+                       <div class="best-card-sub">Kills: ${rec.kills} · Score: ${rec.score}</div>`
+                    : `<div class="best-card-time unset">Noch nicht abgeschlossen</div>`
+                }
+            </div>`;
+        }).join('');
     }
 
     updateAmmo(current, max) {

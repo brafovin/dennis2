@@ -532,3 +532,119 @@ body {
     pointer-events: none;
     text-align: center;
 }
+
+/* ── Statistics Screen ─────────────────────────────────────────── */
+.stats-content {
+    max-width: 900px;
+    width: 96%;
+    max-height: 92vh;
+    overflow-y: auto;
+    text-align: left;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+}
+.stats-content::-webkit-scrollbar { width: 4px; }
+.stats-content::-webkit-scrollbar-thumb { background: #333; }
+
+/* Summary chips */
+#stats-summary {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.stat-chip {
+    background: rgba(200,160,0,0.08);
+    border: 1px solid rgba(200,160,0,0.25);
+    padding: 8px 16px;
+    font-size: 0.78rem;
+}
+.stat-chip .chip-val  { color: #c8a000; font-size: 1.3rem; font-weight: bold; display: block; line-height: 1.2; }
+.stat-chip .chip-lbl  { color: #666; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; }
+
+/* Distribution bar chart */
+#stats-chart-wrap { margin-bottom: 20px; }
+#stats-chart { display: flex; flex-direction: column; gap: 5px; }
+
+.chart-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.72rem;
+}
+.chart-label { width: 85px; color: #666; flex-shrink: 0; text-align: right; }
+.chart-bar-track {
+    flex: 1;
+    height: 12px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+}
+.chart-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #5a7a3a, #c8a000);
+    border-radius: 2px;
+    transition: width 0.5s ease-out;
+}
+.chart-count { width: 28px; color: #888; text-align: right; font-size: 0.7rem; }
+
+/* Kill table */
+#stats-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 18px;
+}
+#stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+#stats-table th {
+    text-align: left;
+    padding: 6px 10px;
+    color: #555;
+    font-size: 0.68rem;
+    letter-spacing: 0.2em;
+    border-bottom: 1px solid #222;
+}
+#stats-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #1a1a1a;
+    color: #bbb;
+}
+#stats-table tr:hover td { background: rgba(255,255,255,0.03); }
+
+/* Row coloring */
+.row-above   td { color: #d0e8c8; }
+.row-above   td:first-child { color: #7aaa5a; }
+.row-below   td { color: #888; }
+.row-head    td:nth-child(5) { color: #ff5555; font-weight: bold; }
+.row-silent  td:nth-child(6)::after { content: ' 🔇'; font-size: 0.7rem; opacity: 0.7; }
+
+/* Average separator row */
+.row-avg td {
+    background: rgba(200,160,0,0.10) !important;
+    border-top: 1px solid rgba(200,160,0,0.4);
+    border-bottom: 1px solid rgba(200,160,0,0.4);
+    color: #c8a000 !important;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+/* Best times table */
+#stats-besttimes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+}
+.best-card {
+    border: 1px solid #222;
+    padding: 10px 14px;
+    background: rgba(0,0,0,0.4);
+}
+.best-card-name  { color: #bbb; font-size: 0.82rem; margin-bottom: 4px; }
+.best-card-time  { color: #c8a000; font-size: 1.3rem; font-weight: bold; }
+.best-card-time.unset { color: #333; font-size: 0.85rem; }
+.best-card-sub   { color: #555; font-size: 0.68rem; margin-top: 2px; letter-spacing: 0.1em; }
