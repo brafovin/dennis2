@@ -61,6 +61,8 @@ class SniperGame {
         this.muzzleFlashTimer = 0;
         this.fadingTracers = [];
         this.dustParticles = null;
+        this.recoilPitch = 0;
+        this.recoilYaw = 0;
 
         this.score = 0;
         this.totalScore = 0;
@@ -981,9 +983,10 @@ class SniperGame {
         if (this.muzzleFlash) {
             this.mainCamera.remove(this.muzzleFlash);
         }
-        const flashGeo = new THREE.SphereGeometry(0.02, 5, 5);
-        const flashMat = new THREE.MeshBasicMaterial({ color: 0xffcc44 });
+        const flashGeo = new THREE.SphereGeometry(0.035, 6, 6);
+        const flashMat = new THREE.MeshBasicMaterial({ color: 0xffd35a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
         this.muzzleFlash = new THREE.Mesh(flashGeo, flashMat);
+        this.muzzleFlash.scale.set(1.6, 1.0, 1.0);
         this.muzzleFlash.position.set(0.18, -0.13, -0.9);
         this.muzzleFlash.visible = false;
         this.mainCamera.add(this.muzzleFlash);
@@ -1119,7 +1122,7 @@ class SniperGame {
 
         // Muzzle flash
         this.muzzleFlash.visible = true;
-        this.muzzleFlashTimer = 0.06;
+        this.muzzleFlashTimer = 0.08;
         this.muzzleFlashLight.visible = true;
         this.muzzleFlashLight.position.copy(origin);
 
@@ -1131,9 +1134,12 @@ class SniperGame {
 
         this.timeSinceFire = 0;
 
-        // Recoil
-        this.player.pitch -= 0.008 + Math.random() * 0.004;
-        this.player.yaw   += (Math.random() - 0.5) * 0.004;
+        // Rückstoß – sichtbarer Kick nach oben, der zurückfedert
+        const kick = 0.016 + (1 - stats.stability / 100) * 0.035;
+        this.recoilPitch += kick;
+        this.recoilYaw   += (Math.random() - 0.5) * kick * 0.5;
+        this.player.pitch += 0.0012;   // kleiner bleibender Versatz
+        this.showFireFX();
 
         if (this.ammo === 0) {
             setTimeout(() => this.startReload(), 300);
@@ -1256,7 +1262,11 @@ class SniperGame {
     }
 
     updatePlayerLook(dt) {
-        const sens = CONFIG.PLAYER.SENSITIVITY;
+        let sens = CONFIG.PLAYER.SENSITIVITY;
+        if (this.player.isAiming) {
+            // Beim Zielen langsamer drehen – je stärker der Zoom, desto feiner
+            sens *= Math.pow(this.mainCamera.fov / 75, CONFIG.PLAYER.AIM_SENS_EXP);
+        }
         this.player.yaw   -= this.mouse.dx * sens;
         this.player.pitch -= this.mouse.dy * sens;
         this.mouse.dx = 0;
@@ -1265,9 +1275,14 @@ class SniperGame {
         const maxPitch = CONFIG.PLAYER.MAX_PITCH;
         this.player.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.player.pitch));
 
+        // Rückstoß-Feder: schneller Kick nach oben, federt zurück zur Mitte
+        const recover = Math.min(1, dt * 9);
+        this.recoilPitch += (0 - this.recoilPitch) * recover;
+        this.recoilYaw   += (0 - this.recoilYaw)   * recover;
+
         this.mainCamera.rotation.order = 'YXZ';
-        this.mainCamera.rotation.y = this.player.yaw;
-        this.mainCamera.rotation.x = this.player.pitch;
+        this.mainCamera.rotation.y = this.player.yaw   + this.recoilYaw;
+        this.mainCamera.rotation.x = this.player.pitch + this.recoilPitch;
     }
 
     updatePlayerMovement(dt) {
@@ -1349,9 +1364,26 @@ class SniperGame {
     updateMuzzleFlash(dt) {
         if (this.muzzleFlashTimer > 0) {
             this.muzzleFlashTimer -= dt;
+            // zufälliges Flackern der Mündungs-Skalierung
+            if (this.muzzleFlash.visible) {
+                const f = 1.2 + Math.random() * 0.9;
+                this.muzzleFlash.scale.set(1.6 * f, 1.0 * f, 1.0 * f);
+            }
             if (this.muzzleFlashTimer <= 0) {
                 this.muzzleFlash.visible = false;
                 this.muzzleFlashLight.visible = false;
+            }
+        }
+    }
+
+    // Sichtbares Feedback beim Abfeuern – im Visier ein Mündungsfeuer-Aufblitzen
+    showFireFX() {
+        if (this.player.isAiming) {
+            const sf = document.getElementById('scope-flash');
+            if (sf) {
+                sf.classList.remove('flash-on');
+                void sf.offsetWidth;   // Reflow erzwingen, damit die Animation neu startet
+                sf.classList.add('flash-on');
             }
         }
     }
@@ -1689,6 +1721,8 @@ class SniperGame {
         this.player.yaw = Math.PI;
         this.player.pitch = -0.05;
         this.player.isAiming = false;
+        this.recoilPitch = 0;
+        this.recoilYaw = 0;
 
         // Build weapon
         this.buildWeaponVisual();

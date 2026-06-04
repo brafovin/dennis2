@@ -189,6 +189,31 @@ body {
     pointer-events: none;
 }
 
+/* Muzzle-flash bloom inside the scope — shows the shot going off while aiming */
+.scope-flash {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 26vmin; height: 26vmin;
+    border-radius: 50%;
+    background: radial-gradient(circle,
+        rgba(255,238,170,0.95) 0%,
+        rgba(255,170,60,0.55) 32%,
+        rgba(255,120,20,0.0) 70%);
+    opacity: 0;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    transform: translate(-50%, 9vmin) scale(0.4);
+    z-index: 56;
+}
+.scope-flash.flash-on {
+    animation: scopeFlash 150ms ease-out;
+}
+@keyframes scopeFlash {
+    0%   { opacity: 0;   transform: translate(-50%, 9vmin) scale(0.35); }
+    22%  { opacity: 1;   transform: translate(-50%, 9vmin) scale(1.0); }
+    100% { opacity: 0;   transform: translate(-50%, 9vmin) scale(1.35); }
+}
+
 .scope-edge { display: none; }
 #scope-canvas { display: none; }
 

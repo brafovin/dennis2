@@ -3,6 +3,7 @@ const CONFIG = {
         HEIGHT: 1.7,
         MOVE_SPEED: 2.5,
         SENSITIVITY: 0.0015,
+        AIM_SENS_EXP: 0.7,   // Maus-Verlangsamung beim Zielen (0 = keine, 1 = voll FOV-gekoppelt)
         MAX_PITCH: Math.PI / 2.2,
         BREATH_HOLD_MAX: 6000,
         BREATH_RECOVER_RATE: 0.4,
